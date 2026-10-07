@@ -74,6 +74,22 @@ func items(deps Dependencies) http.HandlerFunc {
 			}
 			limit = n
 		}
+		watchState := r.URL.Query().Get("watchState")
+		switch watchState {
+		case "", "all", "unplayed", "in_progress", "watched":
+		default:
+			writeError(w, http.StatusBadRequest, "INVALID_WATCH_STATE", "unsupported watch state")
+			return
+		}
+		principalID := ""
+		if watchState != "" && watchState != "all" {
+			principal, ok := principalFromRequest(r)
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "AUTH_REQUIRED", "watch-state filter requires authentication")
+				return
+			}
+			principalID = principal.ID
+		}
 		var afterTitle, afterID string
 		if raw := r.URL.Query().Get("cursor"); raw != "" {
 			var err error
@@ -88,6 +104,7 @@ func items(deps Dependencies) http.HandlerFunc {
 			Kind:       catalog.ItemKind(r.URL.Query().Get("kind")),
 			ParentID:   r.URL.Query().Get("parentId"),
 			Search:     r.URL.Query().Get("q"),
+			WatchState: watchState, PrincipalID: principalID,
 			AfterTitle: afterTitle, AfterID: afterID, Limit: limit + 1,
 		}
 		values, err := deps.Catalog.ListItems(r.Context(), q)

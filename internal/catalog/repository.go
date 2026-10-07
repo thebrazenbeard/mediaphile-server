@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -290,13 +291,15 @@ func (r *Repository) DeleteStreamsForPart(ctx context.Context, partID string) er
 }
 
 type ItemQuery struct {
-	LibraryID  string
-	Kind       ItemKind
-	ParentID   string
-	Search     string
-	AfterTitle string
-	AfterID    string
-	Limit      int
+	LibraryID   string
+	Kind        ItemKind
+	ParentID    string
+	Search      string
+	WatchState  string
+	PrincipalID string
+	AfterTitle  string
+	AfterID     string
+	Limit       int
 }
 
 func (r *Repository) ListLibraries(ctx context.Context) ([]Library, error) {
@@ -336,6 +339,22 @@ func (r *Repository) ListItems(ctx context.Context, q ItemQuery) ([]Item, error)
 	if q.Search != "" {
 		query += " AND lower(title) LIKE ?"
 		args = append(args, "%"+strings.ToLower(q.Search)+"%")
+	}
+	if q.WatchState != "" && q.WatchState != "all" {
+		switch q.WatchState {
+		case "watched":
+			query += " AND EXISTS (SELECT 1 FROM playback_state ps WHERE ps.item_id=items.id AND ps.principal_id=? AND ps.completed=1)"
+		case "in_progress":
+			query += " AND EXISTS (SELECT 1 FROM playback_state ps WHERE ps.item_id=items.id AND ps.principal_id=? AND ps.resume_ms>0 AND ps.completed=0)"
+		case "unplayed":
+			query += " AND NOT EXISTS (SELECT 1 FROM playback_state ps WHERE ps.item_id=items.id AND ps.principal_id=? AND (ps.resume_ms>0 OR ps.play_count>0 OR ps.completed=1))"
+		default:
+			return nil, fmt.Errorf("invalid watch state %q", q.WatchState)
+		}
+		if q.PrincipalID == "" {
+			return nil, fmt.Errorf("watch-state filter requires authenticated principal")
+		}
+		args = append(args, q.PrincipalID)
 	}
 	if q.AfterTitle != "" || q.AfterID != "" {
 		query += " AND (lower(title)>? OR (lower(title)=? AND id>?))"
