@@ -233,3 +233,57 @@ func nullIntPtr(v sql.NullInt64) *int {
 }
 
 func IsNotFound(err error) bool { return errors.Is(err, sql.ErrNoRows) }
+
+func (r *Repository) GetLibrary(ctx context.Context, id string) (Library, error) {
+	var v Library
+	var enabled int
+	err := r.db.QueryRowContext(ctx, "SELECT id,name,media_type,root_path,enabled FROM libraries WHERE id=?", id).
+		Scan(&v.ID, &v.Name, &v.MediaType, &v.RootPath, &enabled)
+	if err != nil {
+		return Library{}, err
+	}
+	v.Enabled = enabled != 0
+	return v, nil
+}
+
+func (r *Repository) FindMediaPartByPath(ctx context.Context, path string) (MediaPart, error) {
+	var v MediaPart
+	var available int
+	err := r.db.QueryRowContext(ctx, "SELECT id,source_id,path,size,mod_time_ns,available FROM media_parts WHERE path=?", path).
+		Scan(&v.ID, &v.SourceID, &v.Path, &v.Size, &v.ModTimeNS, &available)
+	if err != nil {
+		return MediaPart{}, err
+	}
+	v.Available = available != 0
+	return v, nil
+}
+
+func (r *Repository) ListPartsByLibrary(ctx context.Context, libraryID string) ([]MediaPart, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT p.id,p.source_id,p.path,p.size,p.mod_time_ns,p.available
+FROM media_parts p
+JOIN media_sources s ON s.id=p.source_id
+JOIN items i ON i.id=s.item_id
+WHERE i.library_id=?
+ORDER BY p.path`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MediaPart
+	for rows.Next() {
+		var v MediaPart
+		var available int
+		if err := rows.Scan(&v.ID, &v.SourceID, &v.Path, &v.Size, &v.ModTimeNS, &available); err != nil {
+			return nil, err
+		}
+		v.Available = available != 0
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) DeleteStreamsForPart(ctx context.Context, partID string) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM media_streams WHERE part_id=?", partID)
+	return err
+}
