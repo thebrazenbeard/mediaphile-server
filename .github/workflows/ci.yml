@@ -1,0 +1,27 @@
+name: Mediaphile Server CI
+
+on:
+  push:
+    branches: [main, 'build/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout server
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test server
+        run: go test ./...
+      - name: Vet server
+        run: go vet ./...
+      - name: Build server
+        run: go build -o /tmp/mediaphile-server ./cmd/mediaphile-server

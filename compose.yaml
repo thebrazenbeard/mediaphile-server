@@ -1,0 +1,23 @@
+services:
+  mediaphile-server:
+    build: .
+    restart: unless-stopped
+    environment:
+      MEDIAPHILE_LISTEN_ADDR: 0.0.0.0
+      MEDIAPHILE_DATA_DIR: /config
+      MEDIAPHILE_TRANSCODE_DIR: /transcode
+      MEDIAPHILE_UI_DIR: /ui
+    ports:
+      - "${MEDIAPHILE_BIND_IP:-127.0.0.1}:8097:8097/tcp"
+      - "${MEDIAPHILE_BIND_IP:-127.0.0.1}:8098:8098/udp"
+    volumes:
+      - mediaphile-config:/config
+      - mediaphile-transcode:/transcode
+      - ./ui:/ui:ro
+      - ${MEDIAPHILE_MEDIA_ROOT:-./media}:/media:ro
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mediaphile-config:
+  mediaphile-transcode:

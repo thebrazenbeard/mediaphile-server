@@ -1,0 +1,7 @@
+/mediaphile-server
+/mediaphile-server.exe
+/data/
+/transcode/
+*.db
+*.db-shm
+*.db-wal
