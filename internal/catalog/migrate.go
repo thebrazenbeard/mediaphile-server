@@ -7,6 +7,16 @@ import (
 	schemamigrations "github.com/thebrazenbeard/mediaphile-server/migrations"
 )
 
+type migration struct {
+	version int
+	sql     string
+}
+
+var migrations = []migration{
+	{version: 1, sql: schemamigrations.Initial},
+	{version: 2, sql: schemamigrations.KnowledgeWebhooks},
+}
+
 func applyMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -15,25 +25,29 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 )`); err != nil {
 		return fmt.Errorf("create migration table: %w", err)
 	}
-
-	var applied int
-	if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version = 1").Scan(&applied); err != nil {
-		return err
+	for _, m := range migrations {
+		var applied int
+		if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version=?", m.version).Scan(&applied); err != nil {
+			return err
+		}
+		if applied != 0 {
+			continue
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(m.sql); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("apply migration %d: %w", m.version, err)
+		}
+		if _, err := tx.Exec("INSERT INTO schema_migrations(version) VALUES (?)", m.version); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("record migration %d: %w", m.version, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
 	}
-	if applied != 0 {
-		return nil
-	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(schemamigrations.Initial); err != nil {
-		return fmt.Errorf("apply migration 1: %w", err)
-	}
-	if _, err := tx.Exec("INSERT INTO schema_migrations(version) VALUES (1)"); err != nil {
-		return fmt.Errorf("record migration 1: %w", err)
-	}
-	return tx.Commit()
+	return nil
 }

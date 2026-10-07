@@ -561,3 +561,80 @@ FROM media_parts WHERE source_id=? AND available=1 ORDER BY id LIMIT 1`, sourceI
 	v.Available = available != 0
 	return v, nil
 }
+
+func (r *Repository) CreateWebhookSubscription(ctx context.Context, v WebhookSubscription) error {
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO webhook_subscriptions(id,target_url,event_types,secret_hash,secret_value,enabled)
+VALUES(?,?,?,?,?,?)`, v.ID, v.TargetURL, v.EventTypes, v.SecretHash, v.SecretValue, boolInt(v.Enabled))
+	return err
+}
+
+func (r *Repository) ListWebhookSubscriptions(ctx context.Context) ([]WebhookSubscription, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id,target_url,event_types,secret_hash,secret_value,enabled
+FROM webhook_subscriptions WHERE enabled=1 ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WebhookSubscription
+	for rows.Next() {
+		var v WebhookSubscription
+		var enabled int
+		if err := rows.Scan(&v.ID, &v.TargetURL, &v.EventTypes, &v.SecretHash, &v.SecretValue, &enabled); err != nil {
+			return nil, err
+		}
+		v.Enabled = enabled != 0
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) DeleteWebhookSubscription(ctx context.Context, id string) error {
+	res, err := r.db.ExecContext(ctx, "DELETE FROM webhook_subscriptions WHERE id=?", id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (r *Repository) UpsertKnowledgeRecord(ctx context.Context, v KnowledgeRecord) error {
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO knowledge_records(id,item_id,source_repository,source_revision,source_digest,source_record_id,evidence_class,payload_json,unresolved,conflict)
+VALUES(?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(id) DO UPDATE SET
+ item_id=excluded.item_id,source_repository=excluded.source_repository,source_revision=excluded.source_revision,
+ source_digest=excluded.source_digest,source_record_id=excluded.source_record_id,evidence_class=excluded.evidence_class,
+ payload_json=excluded.payload_json,unresolved=excluded.unresolved,conflict=excluded.conflict,imported_at=CURRENT_TIMESTAMP
+`, v.ID, v.ItemID, v.SourceRepository, v.SourceRevision, v.SourceDigest, v.SourceRecordID, v.EvidenceClass, v.PayloadJSON, boolInt(v.Unresolved), boolInt(v.Conflict))
+	return err
+}
+
+func (r *Repository) ListKnowledgeForItem(ctx context.Context, itemID string) ([]KnowledgeRecord, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id,item_id,source_repository,source_revision,source_digest,source_record_id,evidence_class,payload_json,unresolved,conflict,imported_at
+FROM knowledge_records WHERE item_id=? ORDER BY evidence_class,id`, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []KnowledgeRecord
+	for rows.Next() {
+		var v KnowledgeRecord
+		var unresolved, conflict int
+		if err := rows.Scan(&v.ID, &v.ItemID, &v.SourceRepository, &v.SourceRevision, &v.SourceDigest, &v.SourceRecordID, &v.EvidenceClass, &v.PayloadJSON, &unresolved, &conflict, &v.ImportedAt); err != nil {
+			return nil, err
+		}
+		v.Unresolved = unresolved != 0
+		v.Conflict = conflict != 0
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}

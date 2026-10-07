@@ -3,6 +3,7 @@ package httpapi
 import (
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -141,7 +142,24 @@ func itemDetail(deps Dependencies) http.HandlerFunc {
 		for _, v := range streams {
 			streamOut = append(streamOut, streamDTO{ID: v.ID, PartID: v.PartID, Kind: string(v.Kind), Index: v.StreamIndex, Codec: v.Codec, Language: v.Language, Channels: v.Channels, Width: v.Width, Height: v.Height, FrameRate: v.FrameRate, Default: v.Default, Forced: v.Forced})
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"item": toItemDTO(item), "sources": sourceOut, "parts": partOut, "streams": streamOut, "knowledge": []any{}})
+		knowledge, err := deps.Catalog.ListKnowledgeForItem(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "CATALOG_ERROR", "could not load knowledge records")
+			return
+		}
+		knowledgeOut := make([]map[string]any, 0, len(knowledge))
+		for _, v := range knowledge {
+			var payload any
+			if err := json.Unmarshal([]byte(v.PayloadJSON), &payload); err != nil {
+				payload = map[string]any{"raw": v.PayloadJSON}
+			}
+			knowledgeOut = append(knowledgeOut, map[string]any{
+				"id": v.ID, "sourceRepository": v.SourceRepository, "sourceRevision": v.SourceRevision,
+				"sourceDigest": v.SourceDigest, "sourceRecordId": v.SourceRecordID, "evidenceClass": v.EvidenceClass,
+				"payload": payload, "unresolved": v.Unresolved, "conflict": v.Conflict, "importedAt": v.ImportedAt,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"item": toItemDTO(item), "sources": sourceOut, "parts": partOut, "streams": streamOut, "knowledge": knowledgeOut})
 	}
 }
 

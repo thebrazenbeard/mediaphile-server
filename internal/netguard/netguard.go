@@ -100,3 +100,24 @@ func writeForbidden(w http.ResponseWriter) {
 		},
 	})
 }
+
+func IsDefaultAllowed(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	return contains(defaultAllowed, addr)
+}
+
+// IsLANPrefix validates the entire CIDR, not merely its first address.
+func IsLANPrefix(prefix netip.Prefix) bool {
+	if !prefix.IsValid() {
+		return false
+	}
+	if prefix.Addr().Is4In6() {
+		return false
+	}
+	for _, allowed := range defaultAllowed {
+		if prefix.Bits() >= allowed.Bits() && allowed.Contains(prefix.Masked().Addr()) {
+			return true
+		}
+	}
+	return false
+}

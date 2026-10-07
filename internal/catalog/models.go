@@ -115,3 +115,26 @@ type PlaybackSession struct {
 	EndedAt       *string
 	StopReason    *string
 }
+
+type WebhookSubscription struct {
+	ID          string
+	TargetURL   string
+	EventTypes  string
+	SecretHash  string
+	SecretValue string
+	Enabled     bool
+}
+
+type KnowledgeRecord struct {
+	ID               string
+	ItemID           string
+	SourceRepository string
+	SourceRevision   string
+	SourceDigest     string
+	SourceRecordID   string
+	EvidenceClass    string
+	PayloadJSON      string
+	Unresolved       bool
+	Conflict         bool
+	ImportedAt       string
+}

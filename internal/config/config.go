@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/thebrazenbeard/mediaphile-server/internal/netguard"
 )
 
 type Config struct {
@@ -15,6 +17,7 @@ type Config struct {
 	DiscoveryPort  int
 	DataDir        string
 	TranscodeDir   string
+	UIDir          string
 	TrustedProxies []netip.Prefix
 	AllowedCIDRs   []netip.Prefix
 }
@@ -26,6 +29,7 @@ func Default() Config {
 		DiscoveryPort: 8098,
 		DataDir:       filepath.Clean("./data"),
 		TranscodeDir:  filepath.Clean("./transcode"),
+		UIDir:         filepath.Clean("./ui"),
 	}
 }
 
@@ -54,6 +58,9 @@ func Load() (Config, error) {
 	if v := strings.TrimSpace(os.Getenv("MEDIAPHILE_TRANSCODE_DIR")); v != "" {
 		cfg.TranscodeDir = filepath.Clean(v)
 	}
+	if v := strings.TrimSpace(os.Getenv("MEDIAPHILE_UI_DIR")); v != "" {
+		cfg.UIDir = filepath.Clean(v)
+	}
 
 	var err error
 	if cfg.TrustedProxies, err = parsePrefixes(os.Getenv("MEDIAPHILE_TRUSTED_PROXIES")); err != nil {
@@ -62,12 +69,17 @@ func Load() (Config, error) {
 	if cfg.AllowedCIDRs, err = parsePrefixes(os.Getenv("MEDIAPHILE_ALLOWED_CIDRS")); err != nil {
 		return Config{}, fmt.Errorf("allowed CIDRs: %w", err)
 	}
+	for _, prefix := range cfg.AllowedCIDRs {
+		if !netguard.IsDefaultAllowed(prefix.Addr()) ||
+			!netguard.IsDefaultAllowed(prefix.Masked().Addr()) ||
+			!netguard.IsLANPrefix(prefix) {
+			return Config{}, fmt.Errorf("MEDIAPHILE_ALLOWED_CIDRS cannot expand access outside LAN: %s", prefix)
+		}
+	}
 	return cfg, nil
 }
 
-func (c Config) HTTPAddress() string {
-	return fmt.Sprintf("%s:%d", c.ListenAddr, c.HTTPPort)
-}
+func (c Config) HTTPAddress() string { return fmt.Sprintf("%s:%d", c.ListenAddr, c.HTTPPort) }
 
 func parsePrefixes(raw string) ([]netip.Prefix, error) {
 	raw = strings.TrimSpace(raw)

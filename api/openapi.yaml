@@ -15,7 +15,14 @@
         "operationId": "getHealth",
         "responses": {
           "200": {
-            "description": "Server health"
+            "description": "Health",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
           }
         }
       }
@@ -25,7 +32,14 @@
         "operationId": "getServer",
         "responses": {
           "200": {
-            "description": "Server identity and supported API versions"
+            "description": "ServerInfo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
           }
         }
       }
@@ -34,11 +48,25 @@
       "post": {
         "operationId": "bootstrap",
         "requestBody": {
-          "required": true
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BootstrapRequest"
+              }
+            }
+          }
         },
         "responses": {
           "201": {
-            "description": "Administrator created"
+            "description": "AuthResponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
           },
           "409": {
             "description": "Already initialized"
@@ -50,11 +78,25 @@
       "post": {
         "operationId": "login",
         "requestBody": {
-          "required": true
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthRequest"
+              }
+            }
+          }
         },
         "responses": {
           "200": {
-            "description": "Authenticated"
+            "description": "AuthResponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -84,7 +126,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Libraries"
+            "description": "LibraryList",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryList"
+                }
+              }
+            }
           }
         }
       },
@@ -96,11 +145,25 @@
           }
         ],
         "requestBody": {
-          "required": true
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCreate"
+              }
+            }
+          }
         },
         "responses": {
           "201": {
-            "description": "Library created"
+            "description": "Library",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Library"
+                }
+              }
+            }
           }
         }
       }
@@ -167,7 +230,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginated items"
+            "description": "ItemPage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemPage"
+                }
+              }
+            }
           }
         }
       }
@@ -192,7 +262,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Item detail and media inventory"
+            "description": "ItemDetail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemDetail"
+                }
+              }
+            }
           },
           "404": {
             "description": "Item not found"
@@ -209,11 +286,25 @@
           }
         ],
         "requestBody": {
-          "required": true
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackRequest"
+              }
+            }
+          }
         },
         "responses": {
           "200": {
-            "description": "Deterministic playback decision"
+            "description": "PlaybackDecision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackDecision"
+                }
+              }
+            }
           }
         }
       }
@@ -282,7 +373,24 @@
         ],
         "responses": {
           "201": {
-            "description": "Playback session created"
+            "description": "PlaybackSession",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackSession"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackSessionRequest"
+              }
+            }
           }
         }
       }
@@ -307,7 +415,24 @@
         ],
         "responses": {
           "200": {
-            "description": "Playback session updated"
+            "description": "PlaybackSession",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackSession"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackProgressRequest"
+              }
+            }
           }
         }
       },
@@ -355,7 +480,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Playback state"
+            "description": "PlaybackState",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackState"
+                }
+              }
+            }
           }
         }
       },
@@ -378,19 +510,31 @@
         ],
         "responses": {
           "200": {
-            "description": "Playback state updated"
+            "description": "PlaybackState",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackState"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackStateRequest"
+              }
+            }
           }
         }
       }
     },
     "/api/v1/transcode/{sessionId}/{artifact}": {
       "get": {
-        "operationId": "getTranscodeArtifact",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "operationId": "transcodeArtifact",
         "parameters": [
           {
             "in": "path",
@@ -411,10 +555,179 @@
         ],
         "responses": {
           "200": {
-            "description": "HLS playlist or segment"
-          },
-          "404": {
-            "description": "Artifact unavailable"
+            "description": "HLS playlist or media segment"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/libraries/{libraryId}/scan": {
+      "post": {
+        "operationId": "scanLibrary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "libraryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "scanLibrary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "operationId": "streamEvents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Server-sent local event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/webhooks": {
+      "get": {
+        "operationId": "listWebhooks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "listWebhooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookList"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createWebhook",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "createWebhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookCreated"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhookId}": {
+      "delete": {
+        "operationId": "deleteWebhook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "webhookId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "deleteWebhook"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/provenance/import": {
+      "post": {
+        "operationId": "importProvenance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "importProvenance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvenanceResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvenanceImport"
+              }
+            }
           }
         }
       }
@@ -643,6 +956,619 @@
             "type": "boolean"
           }
         }
+      },
+      "ServerInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "apiVersions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "initialized": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "apiVersions",
+          "initialized"
+        ]
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "liveness": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "status",
+          "liveness",
+          "readiness"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "admin": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "admin"
+        ]
+      },
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        },
+        "required": [
+          "token",
+          "user"
+        ]
+      },
+      "AuthRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ]
+      },
+      "BootstrapRequest": {
+        "type": "object",
+        "properties": {
+          "bootstrapSecret": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootstrapSecret",
+          "username",
+          "password"
+        ]
+      },
+      "LibraryList": {
+        "type": "object",
+        "properties": {
+          "libraries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Library"
+            }
+          }
+        },
+        "required": [
+          "libraries"
+        ]
+      },
+      "LibraryCreate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string"
+          },
+          "rootPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mediaType",
+          "rootPath"
+        ]
+      },
+      "ItemPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "MediaSource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "container": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "bitrate": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "videoCodec": {
+            "type": "string"
+          },
+          "audioCodec": {
+            "type": "string"
+          },
+          "hdr": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "container",
+          "available"
+        ]
+      },
+      "MediaPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "available": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "sourceId",
+          "available"
+        ]
+      },
+      "MediaStream": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "partId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "codec": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "channels": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "default": {
+            "type": "boolean"
+          },
+          "forced": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "partId",
+          "kind",
+          "index",
+          "codec"
+        ]
+      },
+      "Knowledge": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "evidenceClass": {
+            "type": "string"
+          },
+          "sourceRepository": {
+            "type": "string"
+          },
+          "sourceRevision": {
+            "type": "string"
+          },
+          "sourceDigest": {
+            "type": "string"
+          },
+          "sourceRecordId": {
+            "type": "string"
+          },
+          "unresolved": {
+            "type": "boolean"
+          },
+          "conflict": {
+            "type": "boolean"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "evidenceClass",
+          "sourceRepository",
+          "sourceRevision",
+          "sourceRecordId"
+        ]
+      },
+      "ItemDetail": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/Item"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MediaSource"
+            }
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MediaPart"
+            }
+          },
+          "streams": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MediaStream"
+            }
+          },
+          "knowledge": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Knowledge"
+            }
+          }
+        },
+        "required": [
+          "item",
+          "sources",
+          "parts",
+          "streams",
+          "knowledge"
+        ]
+      },
+      "PlaybackSelection": {
+        "type": "object",
+        "properties": {
+          "audioStreamId": {
+            "type": "string"
+          },
+          "subtitleStreamId": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "PlaybackRequest": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/PlaybackCapabilities"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/PlaybackSelection"
+          }
+        },
+        "required": [
+          "itemId",
+          "capabilities"
+        ]
+      },
+      "PlaybackSessionRequest": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "clientId",
+          "sourceId",
+          "decision"
+        ]
+      },
+      "PlaybackSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "positionMs": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "itemId",
+          "clientId",
+          "state"
+        ]
+      },
+      "PlaybackProgressRequest": {
+        "type": "object",
+        "properties": {
+          "positionMs": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "positionMs",
+          "state"
+        ]
+      },
+      "PlaybackStateRequest": {
+        "type": "object",
+        "properties": {
+          "resumeMs": {
+            "type": "integer"
+          },
+          "completed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "resumeMs",
+          "completed"
+        ]
+      },
+      "ScanResult": {
+        "type": "object",
+        "properties": {
+          "scanned": {
+            "type": "integer"
+          },
+          "probed": {
+            "type": "integer"
+          },
+          "unchanged": {
+            "type": "integer"
+          },
+          "missing": {
+            "type": "integer"
+          },
+          "unresolved": {
+            "type": "integer"
+          }
+        },
+        "required": []
+      },
+      "Webhook": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "eventTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "targetUrl",
+          "eventTypes"
+        ]
+      },
+      "WebhookList": {
+        "type": "object",
+        "properties": {
+          "webhooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Webhook"
+            }
+          }
+        },
+        "required": [
+          "webhooks"
+        ]
+      },
+      "WebhookCreate": {
+        "type": "object",
+        "properties": {
+          "targetUrl": {
+            "type": "string"
+          },
+          "eventTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "targetUrl",
+          "eventTypes"
+        ]
+      },
+      "WebhookCreated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "targetUrl": {
+            "type": "string"
+          },
+          "eventTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "secret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "secret"
+        ]
+      },
+      "ProvenanceImport": {
+        "type": "object",
+        "properties": {
+          "sourceRepository": {
+            "type": "string"
+          },
+          "sourceRevision": {
+            "type": "string"
+          },
+          "sourceDigest": {
+            "type": "string"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "sourceRepository",
+          "sourceRevision",
+          "sourceDigest",
+          "records"
+        ]
+      },
+      "ProvenanceResult": {
+        "type": "object",
+        "properties": {
+          "imported": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "imported"
+        ]
       }
     }
   }

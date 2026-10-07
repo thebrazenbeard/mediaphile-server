@@ -38,6 +38,46 @@ func requirePrincipal(deps Dependencies, admin bool, next http.Handler) http.Han
 	})
 }
 
+const mediaCookieName = "mediaphile_media_session"
+
+// Media elements cannot attach bearer headers. Accept a server-issued, HttpOnly,
+// same-origin session cookie only for read-only media endpoints.
+func requireMediaPrincipal(deps Dependencies, next http.Handler) http.Handler {
+	if deps.Auth == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := bearerToken(r.Header.Get("Authorization"))
+		if token == "" {
+			if cookie, err := r.Cookie(mediaCookieName); err == nil {
+				token = cookie.Value
+			}
+		}
+		principal, err := deps.Auth.Authenticate(r.Context(), token)
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "AUTH_REQUIRED", "authentication required")
+			return
+		}
+		ctx := context.WithValue(r.Context(), principalContextKey{}, principal)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func setMediaCookie(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name: mediaCookieName, Value: token, Path: "/api/v1/",
+		HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode,
+		MaxAge: 24 * 60 * 60,
+	})
+}
+
+func clearMediaCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name: mediaCookieName, Path: "/api/v1/", HttpOnly: true,
+		Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: -1,
+	})
+}
+
 func bearerToken(header string) string {
 	const prefix = "Bearer "
 	if !strings.HasPrefix(header, prefix) {
@@ -73,6 +113,7 @@ func bootstrap(deps Dependencies) http.HandlerFunc {
 		case err != nil:
 			writeError(w, http.StatusInternalServerError, "AUTH_ERROR", "could not initialize server")
 		default:
+			setMediaCookie(w, r, token)
 			writeJSON(w, http.StatusCreated, map[string]any{"token": token, "user": map[string]any{"id": principal.ID, "username": principal.Username, "admin": principal.Admin}})
 		}
 	}
@@ -98,6 +139,7 @@ func login(deps Dependencies) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "username or password is invalid")
 			return
 		}
+		setMediaCookie(w, r, token)
 		writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": map[string]any{"id": principal.ID, "username": principal.Username, "admin": principal.Admin}})
 	}
 }
@@ -112,6 +154,7 @@ func logout(deps Dependencies) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "INVALID_SESSION", "session is invalid")
 			return
 		}
+		clearMediaCookie(w, r)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

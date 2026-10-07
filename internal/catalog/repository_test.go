@@ -26,8 +26,8 @@ func TestMigrationsApplyAndAreIdempotent(t *testing.T) {
 	if err := db.QueryRow("select max(version) from schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 1 {
-		t.Fatalf("version=%d want=1", version)
+	if version != 2 {
+		t.Fatalf("version=%d want=2", version)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -40,8 +40,8 @@ func TestMigrationsApplyAndAreIdempotent(t *testing.T) {
 	if err := db2.QueryRow("select max(version) from schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 1 {
-		t.Fatalf("second open version=%d want=1", version)
+	if version != 2 {
+		t.Fatalf("second open version=%d want=2", version)
 	}
 }
 
