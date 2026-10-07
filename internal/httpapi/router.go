@@ -8,10 +8,11 @@ import (
 )
 
 type Dependencies struct {
-	Catalog    *catalog.Repository
-	Auth       *auth.Service
-	ServerID   string
-	ServerName string
+	Catalog         *catalog.Repository
+	Auth            *auth.Service
+	ServerID        string
+	ServerName      string
+	FFmpegAvailable bool
 }
 
 func NewRouter(values ...Dependencies) http.Handler {
@@ -36,5 +37,6 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux.Handle("POST /api/v1/libraries", requirePrincipal(deps, true, createLibrary(deps)))
 	mux.Handle("GET /api/v1/items", requirePrincipal(deps, false, items(deps)))
 	mux.Handle("GET /api/v1/items/{itemId}", requirePrincipal(deps, false, itemDetail(deps)))
+	mux.Handle("POST /api/v1/playback/decide", requirePrincipal(deps, false, playbackDecide(deps)))
 	return mux
 }

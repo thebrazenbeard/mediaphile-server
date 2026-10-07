@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -39,8 +40,11 @@ func main() {
 	if !authService.Initialized(context.Background()) {
 		log.Printf("Mediaphile bootstrap secret: %s", bootstrapSecret)
 	}
+	_, ffmpegErr := exec.LookPath("ffmpeg")
 
-	handler := netguard.New(cfg.TrustedProxies, cfg.AllowedCIDRs).Middleware(httpapi.NewRouter(httpapi.Dependencies{Catalog: repo, Auth: authService}))
+	handler := netguard.New(cfg.TrustedProxies, cfg.AllowedCIDRs).Middleware(httpapi.NewRouter(httpapi.Dependencies{
+		Catalog: repo, Auth: authService, FFmpegAvailable: ffmpegErr == nil,
+	}))
 	server := &http.Server{Addr: cfg.HTTPAddress(), Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	log.Printf("Mediaphile Server listening on %s (LAN-only ingress)", server.Addr)
