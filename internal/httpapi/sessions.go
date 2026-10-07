@@ -8,14 +8,17 @@ import (
 
 	"github.com/thebrazenbeard/mediaphile-server/internal/catalog"
 	"github.com/thebrazenbeard/mediaphile-server/internal/playback"
+	"github.com/thebrazenbeard/mediaphile-server/internal/transcode"
 )
 
 func createPlaybackSession(deps Dependencies) http.HandlerFunc {
 	type request struct {
-		ItemID   string        `json:"itemId"`
-		ClientID string        `json:"clientId"`
-		SourceID string        `json:"sourceId"`
-		Decision playback.Mode `json:"decision"`
+		ItemID              string        `json:"itemId"`
+		ClientID            string        `json:"clientId"`
+		SourceID            string        `json:"sourceId"`
+		Decision            playback.Mode `json:"decision"`
+		Reasons             []string      `json:"reasons,omitempty"`
+		SubtitleStreamIndex *int          `json:"subtitleStreamIndex,omitempty"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Sessions == nil {
@@ -32,12 +35,43 @@ func createPlaybackSession(deps Dependencies) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "itemId, clientId and sourceId are required")
 			return
 		}
+		switch in.Decision {
+		case playback.DirectPlay, playback.Remux, playback.Transcode:
+		default:
+			writeError(w, http.StatusBadRequest, "INVALID_DECISION", "decision is not playable")
+			return
+		}
 		v, err := deps.Sessions.Create(r.Context(), principal.ID, in.ItemID, in.ClientID, in.SourceID, in.Decision)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "PLAYBACK_SESSION_ERROR", err.Error())
 			return
 		}
-		writeJSON(w, http.StatusCreated, sessionDTO(v))
+		response := sessionDTO(v)
+		if in.Decision == playback.Remux || in.Decision == playback.Transcode {
+			if deps.Transcodes == nil {
+				_ = deps.Sessions.End(r.Context(), principal.ID, v.ID, "transcode_unavailable")
+				writeError(w, http.StatusServiceUnavailable, "TRANSCODE_UNAVAILABLE", "transcode service is unavailable")
+				return
+			}
+			part, err := deps.Catalog.GetFirstAvailablePartForSource(r.Context(), in.SourceID)
+			if err != nil {
+				_ = deps.Sessions.End(r.Context(), principal.ID, v.ID, "media_unavailable")
+				writeError(w, http.StatusNotFound, "MEDIA_UNAVAILABLE", "media source has no available part")
+				return
+			}
+			if _, err := deps.Transcodes.Start(r.Context(), v.ID, transcode.Request{InputPath: part.Path, Mode: in.Decision, Reasons: in.Reasons, SubtitleStreamIndex: in.SubtitleStreamIndex}); err != nil {
+				_ = deps.Sessions.End(r.Context(), principal.ID, v.ID, "transcode_start_failed")
+				writeError(w, http.StatusInternalServerError, "TRANSCODE_START_FAILED", "could not start media transform")
+				return
+			}
+			response["url"] = "/api/v1/transcode/" + v.ID + "/master.m3u8"
+		} else {
+			part, err := deps.Catalog.GetFirstAvailablePartForSource(r.Context(), in.SourceID)
+			if err == nil {
+				response["url"] = "/api/v1/media/" + part.ID + "/content"
+			}
+		}
+		writeJSON(w, http.StatusCreated, response)
 	}
 }
 
@@ -89,14 +123,18 @@ func deletePlaybackSession(deps Dependencies) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "AUTH_REQUIRED", "authentication required")
 			return
 		}
+		sessionID := r.PathValue("sessionId")
 		reason := r.URL.Query().Get("reason")
-		if err := deps.Sessions.End(r.Context(), principal.ID, r.PathValue("sessionId"), reason); err != nil {
+		if err := deps.Sessions.End(r.Context(), principal.ID, sessionID, reason); err != nil {
 			if errors.Is(err, playback.ErrSessionForbidden) {
 				writeError(w, http.StatusForbidden, "SESSION_FORBIDDEN", "playback session belongs to another user")
 			} else {
 				writeError(w, http.StatusNotFound, "NOT_FOUND", "playback session not found")
 			}
 			return
+		}
+		if deps.Transcodes != nil {
+			_ = deps.Transcodes.Stop(sessionID)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}

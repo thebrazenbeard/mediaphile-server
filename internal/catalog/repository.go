@@ -547,3 +547,17 @@ func (r *Repository) EndPlaybackSession(ctx context.Context, id, reason string) 
 	}
 	return nil
 }
+
+func (r *Repository) GetFirstAvailablePartForSource(ctx context.Context, sourceID string) (MediaPart, error) {
+	var v MediaPart
+	var available int
+	err := r.db.QueryRowContext(ctx, `
+SELECT id,source_id,path,size,mod_time_ns,available
+FROM media_parts WHERE source_id=? AND available=1 ORDER BY id LIMIT 1`, sourceID).
+		Scan(&v.ID, &v.SourceID, &v.Path, &v.Size, &v.ModTimeNS, &available)
+	if err != nil {
+		return MediaPart{}, err
+	}
+	v.Available = available != 0
+	return v, nil
+}

@@ -7,6 +7,7 @@ import (
 	"github.com/thebrazenbeard/mediaphile-server/internal/catalog"
 	"github.com/thebrazenbeard/mediaphile-server/internal/events"
 	"github.com/thebrazenbeard/mediaphile-server/internal/playback"
+	"github.com/thebrazenbeard/mediaphile-server/internal/transcode"
 )
 
 type Dependencies struct {
@@ -14,6 +15,7 @@ type Dependencies struct {
 	Auth            *auth.Service
 	Events          *events.Bus
 	Sessions        *playback.SessionManager
+	Transcodes      *transcode.Manager
 	ServerID        string
 	ServerName      string
 	FFmpegAvailable bool
@@ -49,5 +51,6 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux.Handle("PUT /api/v1/users/me/playback/{itemId}", requirePrincipal(deps, false, putPlaybackState(deps)))
 	mux.Handle("GET /api/v1/media/{partId}/content", requirePrincipal(deps, false, mediaContent(deps)))
 	mux.Handle("HEAD /api/v1/media/{partId}/content", requirePrincipal(deps, false, mediaContent(deps)))
+	mux.Handle("GET /api/v1/transcode/{sessionId}/{artifact...}", requirePrincipal(deps, false, transcodeArtifact(deps)))
 	return mux
 }

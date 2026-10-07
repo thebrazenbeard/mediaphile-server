@@ -16,6 +16,7 @@ import (
 	"github.com/thebrazenbeard/mediaphile-server/internal/httpapi"
 	"github.com/thebrazenbeard/mediaphile-server/internal/netguard"
 	"github.com/thebrazenbeard/mediaphile-server/internal/playback"
+	"github.com/thebrazenbeard/mediaphile-server/internal/transcode"
 )
 
 func main() {
@@ -42,12 +43,13 @@ func main() {
 	if !authService.Initialized(context.Background()) {
 		log.Printf("Mediaphile bootstrap secret: %s", bootstrapSecret)
 	}
-	_, ffmpegErr := exec.LookPath("ffmpeg")
+	ffmpegPath, ffmpegErr := exec.LookPath("ffmpeg")
 	eventBus := events.NewBus()
 	sessionManager := playback.NewSessionManager(repo, eventBus)
+	transcodeManager := transcode.NewManager(cfg.TranscodeDir, ffmpegPath, nil)
 
 	handler := netguard.New(cfg.TrustedProxies, cfg.AllowedCIDRs).Middleware(httpapi.NewRouter(httpapi.Dependencies{
-		Catalog: repo, Auth: authService, Events: eventBus, Sessions: sessionManager, FFmpegAvailable: ffmpegErr == nil,
+		Catalog: repo, Auth: authService, Events: eventBus, Sessions: sessionManager, Transcodes: transcodeManager, FFmpegAvailable: ffmpegErr == nil,
 	}))
 	server := &http.Server{Addr: cfg.HTTPAddress(), Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
