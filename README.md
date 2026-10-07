@@ -78,4 +78,3 @@ The companion client includes `npm run e2e:real` for an **isolated synthetic-med
 ## Deliberate boundaries
 
 This is a **LAN-only** V1 runtime, not an Internet-facing streaming product. Native TV hardware decoders, Roku/tvOS packaging, production NAS paths, long-running transcoding, and deployment behavior require separate qualification. The private corpus and its provenance rules remain the source of truth for governed knowledge; that does not imply automatic writes or merges to it.
-
