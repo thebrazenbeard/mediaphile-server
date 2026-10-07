@@ -271,6 +271,117 @@
           }
         }
       }
+    },
+    "/api/v1/playback/sessions": {
+      "post": {
+        "operationId": "createPlaybackSession",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Playback session created"
+          }
+        }
+      }
+    },
+    "/api/v1/playback/sessions/{sessionId}": {
+      "patch": {
+        "operationId": "updatePlaybackSession",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Playback session updated"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "endPlaybackSession",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Playback session ended"
+          }
+        }
+      }
+    },
+    "/api/v1/users/me/playback/{itemId}": {
+      "get": {
+        "operationId": "getMyPlaybackState",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Playback state"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putMyPlaybackState",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Playback state updated"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -471,6 +582,29 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "PlaybackState": {
+        "type": "object",
+        "required": [
+          "itemId",
+          "resumeMs",
+          "playCount",
+          "completed"
+        ],
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "resumeMs": {
+            "type": "integer"
+          },
+          "playCount": {
+            "type": "integer"
+          },
+          "completed": {
+            "type": "boolean"
           }
         }
       }

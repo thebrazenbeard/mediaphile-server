@@ -449,3 +449,101 @@ WHERE p.id=?`, partID).Scan(
 	s.Available = sAvailable != 0
 	return p, s, nil
 }
+
+func (r *Repository) GetMediaSource(ctx context.Context, id string) (MediaSource, error) {
+	var v MediaSource
+	var edition sql.NullString
+	var hdr, available int
+	err := r.db.QueryRowContext(ctx, `
+SELECT id,item_id,edition_id,container,duration_ms,bitrate,width,height,video_codec,audio_codec,hdr,available
+FROM media_sources WHERE id=?`, id).Scan(&v.ID, &v.ItemID, &edition, &v.Container, &v.DurationMS, &v.Bitrate, &v.Width, &v.Height, &v.VideoCodec, &v.AudioCodec, &hdr, &available)
+	if err != nil {
+		return MediaSource{}, err
+	}
+	v.EditionID = nullStringPtr(edition)
+	v.HDR = hdr != 0
+	v.Available = available != 0
+	return v, nil
+}
+
+func (r *Repository) CreatePlaybackSession(ctx context.Context, v PlaybackSession) error {
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO playback_sessions(id,principal_id,item_id,client_id,media_source_id,decision,state,position_ms)
+VALUES(?,?,?,?,?,?,?,?)`, v.ID, v.PrincipalID, v.ItemID, v.ClientID, v.MediaSourceID, v.Decision, v.State, v.PositionMS)
+	return err
+}
+
+func (r *Repository) GetPlaybackSession(ctx context.Context, id string) (PlaybackSession, error) {
+	return scanPlaybackSession(r.db.QueryRowContext(ctx, `
+SELECT id,principal_id,item_id,client_id,media_source_id,decision,state,position_ms,started_at,updated_at,ended_at,stop_reason
+FROM playback_sessions WHERE id=?`, id))
+}
+
+type rowScanner interface{ Scan(...any) error }
+
+func scanPlaybackSession(row rowScanner) (PlaybackSession, error) {
+	var v PlaybackSession
+	var source, ended, reason sql.NullString
+	err := row.Scan(&v.ID, &v.PrincipalID, &v.ItemID, &v.ClientID, &source, &v.Decision, &v.State, &v.PositionMS, &v.StartedAt, &v.UpdatedAt, &ended, &reason)
+	if err != nil {
+		return PlaybackSession{}, err
+	}
+	v.MediaSourceID = nullStringPtr(source)
+	v.EndedAt = nullStringPtr(ended)
+	v.StopReason = nullStringPtr(reason)
+	return v, nil
+}
+
+func (r *Repository) UpdateSessionAndPlaybackState(ctx context.Context, sessionID string, positionMS int64, state string, pb PlaybackState) (PlaybackSession, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return PlaybackSession{}, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, "UPDATE playback_sessions SET position_ms=?,state=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND ended_at IS NULL", positionMS, state, sessionID)
+	if err != nil {
+		return PlaybackSession{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return PlaybackSession{}, err
+	}
+	if n == 0 {
+		return PlaybackSession{}, sql.ErrNoRows
+	}
+	_, err = tx.ExecContext(ctx, `
+INSERT INTO playback_state(principal_id,item_id,resume_ms,play_count,completed,last_played_at,selected_audio_stream_id,selected_subtitle_stream_id)
+VALUES(?,?,?,?,?,CURRENT_TIMESTAMP,?,?)
+ON CONFLICT(principal_id,item_id) DO UPDATE SET
+ resume_ms=excluded.resume_ms,play_count=excluded.play_count,completed=excluded.completed,last_played_at=CURRENT_TIMESTAMP,
+ selected_audio_stream_id=excluded.selected_audio_stream_id,selected_subtitle_stream_id=excluded.selected_subtitle_stream_id
+`, pb.PrincipalID, pb.ItemID, pb.ResumeMS, pb.PlayCount, boolInt(pb.Completed), pb.SelectedAudioStreamID, pb.SelectedSubtitleStreamID)
+	if err != nil {
+		return PlaybackSession{}, err
+	}
+	v, err := scanPlaybackSession(tx.QueryRowContext(ctx, `
+SELECT id,principal_id,item_id,client_id,media_source_id,decision,state,position_ms,started_at,updated_at,ended_at,stop_reason
+FROM playback_sessions WHERE id=?`, sessionID))
+	if err != nil {
+		return PlaybackSession{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return PlaybackSession{}, err
+	}
+	return v, nil
+}
+
+func (r *Repository) EndPlaybackSession(ctx context.Context, id, reason string) error {
+	res, err := r.db.ExecContext(ctx, "UPDATE playback_sessions SET state='ended',ended_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,stop_reason=? WHERE id=? AND ended_at IS NULL", reason, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}

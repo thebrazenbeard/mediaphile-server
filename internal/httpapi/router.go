@@ -5,11 +5,15 @@ import (
 
 	"github.com/thebrazenbeard/mediaphile-server/internal/auth"
 	"github.com/thebrazenbeard/mediaphile-server/internal/catalog"
+	"github.com/thebrazenbeard/mediaphile-server/internal/events"
+	"github.com/thebrazenbeard/mediaphile-server/internal/playback"
 )
 
 type Dependencies struct {
 	Catalog         *catalog.Repository
 	Auth            *auth.Service
+	Events          *events.Bus
+	Sessions        *playback.SessionManager
 	ServerID        string
 	ServerName      string
 	FFmpegAvailable bool
@@ -38,6 +42,11 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/items", requirePrincipal(deps, false, items(deps)))
 	mux.Handle("GET /api/v1/items/{itemId}", requirePrincipal(deps, false, itemDetail(deps)))
 	mux.Handle("POST /api/v1/playback/decide", requirePrincipal(deps, false, playbackDecide(deps)))
+	mux.Handle("POST /api/v1/playback/sessions", requirePrincipal(deps, false, createPlaybackSession(deps)))
+	mux.Handle("PATCH /api/v1/playback/sessions/{sessionId}", requirePrincipal(deps, false, updatePlaybackSession(deps)))
+	mux.Handle("DELETE /api/v1/playback/sessions/{sessionId}", requirePrincipal(deps, false, deletePlaybackSession(deps)))
+	mux.Handle("GET /api/v1/users/me/playback/{itemId}", requirePrincipal(deps, false, getPlaybackState(deps)))
+	mux.Handle("PUT /api/v1/users/me/playback/{itemId}", requirePrincipal(deps, false, putPlaybackState(deps)))
 	mux.Handle("GET /api/v1/media/{partId}/content", requirePrincipal(deps, false, mediaContent(deps)))
 	mux.Handle("HEAD /api/v1/media/{partId}/content", requirePrincipal(deps, false, mediaContent(deps)))
 	return mux

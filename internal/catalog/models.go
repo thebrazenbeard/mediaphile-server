@@ -100,3 +100,18 @@ type PlaybackState struct {
 	SelectedAudioStreamID    *string
 	SelectedSubtitleStreamID *string
 }
+
+type PlaybackSession struct {
+	ID            string
+	PrincipalID   string
+	ItemID        string
+	ClientID      string
+	MediaSourceID *string
+	Decision      string
+	State         string
+	PositionMS    int64
+	StartedAt     string
+	UpdatedAt     string
+	EndedAt       *string
+	StopReason    *string
+}
