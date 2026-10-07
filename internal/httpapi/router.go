@@ -3,11 +3,13 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/thebrazenbeard/mediaphile-server/internal/auth"
 	"github.com/thebrazenbeard/mediaphile-server/internal/catalog"
 )
 
 type Dependencies struct {
 	Catalog    *catalog.Repository
+	Auth       *auth.Service
 	ServerID   string
 	ServerName string
 }
@@ -27,8 +29,12 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/health", health)
 	mux.HandleFunc("GET /api/v1/server", serverInfo(deps))
-	mux.HandleFunc("GET /api/v1/libraries", libraries(deps))
-	mux.HandleFunc("GET /api/v1/items", items(deps))
-	mux.HandleFunc("GET /api/v1/items/{itemId}", itemDetail(deps))
+	mux.HandleFunc("POST /api/v1/setup/bootstrap", bootstrap(deps))
+	mux.HandleFunc("POST /api/v1/auth/login", login(deps))
+	mux.Handle("POST /api/v1/auth/logout", requirePrincipal(deps, false, logout(deps)))
+	mux.Handle("GET /api/v1/libraries", requirePrincipal(deps, false, libraries(deps)))
+	mux.Handle("POST /api/v1/libraries", requirePrincipal(deps, true, createLibrary(deps)))
+	mux.Handle("GET /api/v1/items", requirePrincipal(deps, false, items(deps)))
+	mux.Handle("GET /api/v1/items/{itemId}", requirePrincipal(deps, false, itemDetail(deps)))
 	return mux
 }

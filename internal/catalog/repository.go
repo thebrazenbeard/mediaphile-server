@@ -373,3 +373,56 @@ func (r *Repository) ListItems(ctx context.Context, q ItemQuery) ([]Item, error)
 	}
 	return out, rows.Err()
 }
+
+func (r *Repository) CountAdmins(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM principals WHERE is_admin=1").Scan(&n)
+	return n, err
+}
+
+func (r *Repository) GetPrincipalByUsername(ctx context.Context, username string) (Principal, error) {
+	var v Principal
+	var admin int
+	err := r.db.QueryRowContext(ctx, "SELECT id,username,password_hash,is_admin FROM principals WHERE username=?", username).
+		Scan(&v.ID, &v.Username, &v.PasswordHash, &admin)
+	if err != nil {
+		return Principal{}, err
+	}
+	v.Admin = admin != 0
+	return v, nil
+}
+
+func (r *Repository) CreateAuthSession(ctx context.Context, id, principalID, tokenHash string) error {
+	_, err := r.db.ExecContext(ctx, "INSERT INTO auth_sessions(id,principal_id,token_hash) VALUES(?,?,?)", id, principalID, tokenHash)
+	return err
+}
+
+func (r *Repository) GetPrincipalByTokenHash(ctx context.Context, tokenHash string) (Principal, error) {
+	var v Principal
+	var admin int
+	err := r.db.QueryRowContext(ctx, `
+SELECT p.id,p.username,p.password_hash,p.is_admin
+FROM auth_sessions s JOIN principals p ON p.id=s.principal_id
+WHERE s.token_hash=? AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at>CURRENT_TIMESTAMP)
+`, tokenHash).Scan(&v.ID, &v.Username, &v.PasswordHash, &admin)
+	if err != nil {
+		return Principal{}, err
+	}
+	v.Admin = admin != 0
+	return v, nil
+}
+
+func (r *Repository) RevokeAuthSession(ctx context.Context, tokenHash string) error {
+	res, err := r.db.ExecContext(ctx, "UPDATE auth_sessions SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=? AND revoked_at IS NULL", tokenHash)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
