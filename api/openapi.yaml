@@ -217,6 +217,60 @@
           }
         }
       }
+    },
+    "/api/v1/media/{partId}/content": {
+      "get": {
+        "operationId": "getMediaContent",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full media content"
+          },
+          "206": {
+            "description": "Partial media content"
+          },
+          "416": {
+            "description": "Unsatisfiable range"
+          }
+        }
+      },
+      "head": {
+        "operationId": "headMediaContent",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "partId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Media metadata"
+          }
+        }
+      }
     }
   },
   "components": {

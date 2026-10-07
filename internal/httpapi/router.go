@@ -38,5 +38,7 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/items", requirePrincipal(deps, false, items(deps)))
 	mux.Handle("GET /api/v1/items/{itemId}", requirePrincipal(deps, false, itemDetail(deps)))
 	mux.Handle("POST /api/v1/playback/decide", requirePrincipal(deps, false, playbackDecide(deps)))
+	mux.Handle("GET /api/v1/media/{partId}/content", requirePrincipal(deps, false, mediaContent(deps)))
+	mux.Handle("HEAD /api/v1/media/{partId}/content", requirePrincipal(deps, false, mediaContent(deps)))
 	return mux
 }

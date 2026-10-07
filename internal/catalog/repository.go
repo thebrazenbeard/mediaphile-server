@@ -426,3 +426,26 @@ func (r *Repository) RevokeAuthSession(ctx context.Context, tokenHash string) er
 	}
 	return nil
 }
+
+func (r *Repository) GetMediaPartWithSource(ctx context.Context, partID string) (MediaPart, MediaSource, error) {
+	var p MediaPart
+	var s MediaSource
+	var pAvailable, sAvailable, hdr int
+	var edition sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+SELECT p.id,p.source_id,p.path,p.size,p.mod_time_ns,p.available,
+       s.id,s.item_id,s.edition_id,s.container,s.duration_ms,s.bitrate,s.width,s.height,s.video_codec,s.audio_codec,s.hdr,s.available
+FROM media_parts p JOIN media_sources s ON s.id=p.source_id
+WHERE p.id=?`, partID).Scan(
+		&p.ID, &p.SourceID, &p.Path, &p.Size, &p.ModTimeNS, &pAvailable,
+		&s.ID, &s.ItemID, &edition, &s.Container, &s.DurationMS, &s.Bitrate, &s.Width, &s.Height, &s.VideoCodec, &s.AudioCodec, &hdr, &sAvailable,
+	)
+	if err != nil {
+		return MediaPart{}, MediaSource{}, err
+	}
+	p.Available = pAvailable != 0
+	s.EditionID = nullStringPtr(edition)
+	s.HDR = hdr != 0
+	s.Available = sAvailable != 0
+	return p, s, nil
+}
