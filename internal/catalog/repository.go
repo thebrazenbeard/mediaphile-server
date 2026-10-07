@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 )
 
 type Repository struct {
@@ -286,4 +287,89 @@ ORDER BY p.path`, libraryID)
 func (r *Repository) DeleteStreamsForPart(ctx context.Context, partID string) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM media_streams WHERE part_id=?", partID)
 	return err
+}
+
+type ItemQuery struct {
+	LibraryID  string
+	Kind       ItemKind
+	ParentID   string
+	Search     string
+	AfterTitle string
+	AfterID    string
+	Limit      int
+}
+
+func (r *Repository) ListLibraries(ctx context.Context) ([]Library, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT id,name,media_type,root_path,enabled FROM libraries ORDER BY name,id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Library
+	for rows.Next() {
+		var v Library
+		var enabled int
+		if err := rows.Scan(&v.ID, &v.Name, &v.MediaType, &v.RootPath, &enabled); err != nil {
+			return nil, err
+		}
+		v.Enabled = enabled != 0
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) ListItems(ctx context.Context, q ItemQuery) ([]Item, error) {
+	query := "SELECT id,library_id,parent_id,kind,title,year,season_number,episode_number,unresolved FROM items WHERE 1=1"
+	args := []any{}
+	if q.LibraryID != "" {
+		query += " AND library_id=?"
+		args = append(args, q.LibraryID)
+	}
+	if q.Kind != "" {
+		query += " AND kind=?"
+		args = append(args, q.Kind)
+	}
+	if q.ParentID != "" {
+		query += " AND parent_id=?"
+		args = append(args, q.ParentID)
+	}
+	if q.Search != "" {
+		query += " AND lower(title) LIKE ?"
+		args = append(args, "%"+strings.ToLower(q.Search)+"%")
+	}
+	if q.AfterTitle != "" || q.AfterID != "" {
+		query += " AND (lower(title)>? OR (lower(title)=? AND id>?))"
+		args = append(args, strings.ToLower(q.AfterTitle), strings.ToLower(q.AfterTitle), q.AfterID)
+	}
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 201 {
+		limit = 201
+	}
+	query += " ORDER BY lower(title),id LIMIT ?"
+	args = append(args, limit)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Item
+	for rows.Next() {
+		var v Item
+		var parent sql.NullString
+		var year, season, episode sql.NullInt64
+		var unresolved int
+		if err := rows.Scan(&v.ID, &v.LibraryID, &parent, &v.Kind, &v.Title, &year, &season, &episode, &unresolved); err != nil {
+			return nil, err
+		}
+		v.ParentID = nullStringPtr(parent)
+		v.Year = nullIntPtr(year)
+		v.SeasonNumber = nullIntPtr(season)
+		v.EpisodeNumber = nullIntPtr(episode)
+		v.Unresolved = unresolved != 0
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }

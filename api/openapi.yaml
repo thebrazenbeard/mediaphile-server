@@ -1,0 +1,75 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Mediaphile Server API",
+    "version": "1.0.0"
+  },
+  "servers": [{"url": "/"}],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {"200": {"description": "Server health"}}
+      }
+    },
+    "/api/v1/server": {
+      "get": {
+        "operationId": "getServer",
+        "responses": {"200": {"description": "Server identity and supported API versions"}}
+      }
+    },
+    "/api/v1/libraries": {
+      "get": {
+        "operationId": "listLibraries",
+        "responses": {"200": {"description": "Libraries"}}
+      }
+    },
+    "/api/v1/items": {
+      "get": {
+        "operationId": "listItems",
+        "parameters": [
+          {"in":"query","name":"libraryId","schema":{"type":"string"}},
+          {"in":"query","name":"kind","schema":{"type":"string","enum":["movie","show","season","episode"]}},
+          {"in":"query","name":"parentId","schema":{"type":"string"}},
+          {"in":"query","name":"q","schema":{"type":"string"}},
+          {"in":"query","name":"cursor","schema":{"type":"string"}},
+          {"in":"query","name":"limit","schema":{"type":"integer","minimum":1,"maximum":200}}
+        ],
+        "responses": {"200": {"description": "Paginated items"}}
+      }
+    },
+    "/api/v1/items/{itemId}": {
+      "get": {
+        "operationId": "getItem",
+        "parameters": [{"in":"path","name":"itemId","required":true,"schema":{"type":"string"}}],
+        "responses": {
+          "200": {"description": "Item detail and media inventory"},
+          "404": {"description": "Item not found"}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type":"object",
+        "required":["error"],
+        "properties":{"error":{"type":"object","required":["code","message"],"properties":{"code":{"type":"string"},"message":{"type":"string"},"field":{"type":"string"}}}}
+      },
+      "Library": {
+        "type":"object",
+        "required":["id","name","mediaType","enabled"],
+        "properties":{"id":{"type":"string"},"name":{"type":"string"},"mediaType":{"type":"string","enum":["movies","tv"]},"enabled":{"type":"boolean"}}
+      },
+      "Item": {
+        "type":"object",
+        "required":["id","libraryId","kind","title","unresolved"],
+        "properties":{
+          "id":{"type":"string"},"libraryId":{"type":"string"},"parentId":{"type":"string"},
+          "kind":{"type":"string","enum":["movie","show","season","episode"]},"title":{"type":"string"},
+          "year":{"type":"integer"},"seasonNumber":{"type":"integer"},"episodeNumber":{"type":"integer"},"unresolved":{"type":"boolean"}
+        }
+      }
+    }
+  }
+}
