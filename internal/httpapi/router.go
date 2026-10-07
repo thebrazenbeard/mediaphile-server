@@ -53,6 +53,7 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux.Handle("POST /api/v1/playback/sessions", requirePrincipal(deps, false, createPlaybackSession(deps)))
 	mux.Handle("PATCH /api/v1/playback/sessions/{sessionId}", requirePrincipal(deps, false, updatePlaybackSession(deps)))
 	mux.Handle("DELETE /api/v1/playback/sessions/{sessionId}", requirePrincipal(deps, false, deletePlaybackSession(deps)))
+	mux.Handle("GET /api/v1/users/me/continue-watching", requirePrincipal(deps, false, continueWatching(deps)))
 	mux.Handle("GET /api/v1/users/me/playback/{itemId}", requirePrincipal(deps, false, getPlaybackState(deps)))
 	mux.Handle("PUT /api/v1/users/me/playback/{itemId}", requirePrincipal(deps, false, putPlaybackState(deps)))
 	mux.Handle("GET /api/v1/media/{partId}/content", requireMediaPrincipal(deps, mediaContent(deps)))

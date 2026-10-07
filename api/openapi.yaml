@@ -745,6 +745,41 @@
           }
         }
       }
+    },
+    "/api/v1/users/me/continue-watching": {
+      "get": {
+        "operationId": "getContinueWatching",
+        "summary": "Get resumable locally available titles for the authenticated user",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 24,
+              "default": 12
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered incomplete playback positions for the authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueWatchingPage"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1595,6 +1630,43 @@
         "required": [
           "imported"
         ]
+      },
+      "ContinueWatchingPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContinueWatchingEntry"
+            }
+          }
+        }
+      },
+      "ContinueWatchingEntry": {
+        "type": "object",
+        "required": [
+          "item",
+          "resumeMs",
+          "lastPlayedAt"
+        ],
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/Item"
+          },
+          "resumeMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastPlayedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       }
     }
   }
