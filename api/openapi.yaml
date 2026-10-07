@@ -1359,6 +1359,15 @@
           },
           "decision": {
             "type": "string"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subtitleStreamIndex": {
+            "type": "integer"
           }
         },
         "required": [
@@ -1388,6 +1397,9 @@
           },
           "positionMs": {
             "type": "integer"
+          },
+          "url": {
+            "type": "string"
           }
         },
         "required": [
