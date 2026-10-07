@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -70,6 +71,7 @@ func (p FFProbe) Probe(ctx context.Context, path string) (MediaInfo, error) {
 	if err != nil {
 		return MediaInfo{}, fmt.Errorf("parse ffprobe %q: %w", path, err)
 	}
+	info.Container = normalizeContainer(info.Container, path)
 	return info, nil
 }
 
@@ -152,4 +154,14 @@ func ParseFFProbeJSON(data []byte) (MediaInfo, error) {
 		}
 	}
 	return out, nil
+}
+
+func normalizeContainer(raw, path string) string {
+	if raw == "mov" {
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".mp4", ".m4v", ".m4a":
+			return "mp4"
+		}
+	}
+	return raw
 }
