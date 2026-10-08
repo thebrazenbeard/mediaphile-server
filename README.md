@@ -38,6 +38,8 @@ The server stores **media metadata and playback state in local SQLite**, not on 
 
 Current API includes local bootstrap/login/logout, libraries and scans, browse/search/detail, per-user watch-state filtering, playback decisions and sessions, resume state, byte ranges, HLS artifacts, events/webhooks, discovery, and a bounded provenance-import seam.
 
+**Continue Watching:** `GET /api/v1/users/me/continue-watching?limit=12` returns only that authenticated user's resumable, playable movies and episodes. See [the API contract](docs/CONTINUE_WATCHING_V1.md).
+
 ## Build and run locally
 
 Requires **Go 1.24+**, `ffprobe` to scan video files, and `ffmpeg` for remux/transcoding.
