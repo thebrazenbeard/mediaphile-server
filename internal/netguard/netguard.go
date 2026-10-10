@@ -43,7 +43,13 @@ func (g *Guard) Middleware(next http.Handler) http.Handler {
 		}
 
 		if contains(g.trusted, addr) {
-			if forwarded, ok := firstForwardedAddr(r.Header.Get("X-Forwarded-For")); ok {
+			forwardedHeader := r.Header.Get("X-Forwarded-For")
+			if forwardedHeader != "" {
+				forwarded, ok := firstForwardedAddr(forwardedHeader)
+				if !ok {
+					writeForbidden(w)
+					return
+				}
 				addr = forwarded
 			}
 		}
