@@ -23,6 +23,7 @@ type Dependencies struct {
 	ServerID         string
 	ServerName       string
 	FFmpegAvailable  bool
+	FFmpegBinary     string
 	FFprobeAvailable bool
 }
 
@@ -47,6 +48,9 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/libraries", requirePrincipal(deps, false, libraries(deps)))
 	mux.Handle("POST /api/v1/libraries", requirePrincipal(deps, true, createLibrary(deps)))
 	mux.Handle("POST /api/v1/libraries/{libraryId}/scan", requirePrincipal(deps, true, scanLibrary(deps)))
+	mux.Handle("GET /api/v1/libraries/{libraryId}/subtitles", requirePrincipal(deps, true, librarySubtitleOverview(deps)))
+	mux.Handle("GET /api/v1/subtitles/parts/{partId}", requirePrincipal(deps, true, reviewSubtitlePart(deps)))
+	mux.Handle("POST /api/v1/subtitles/parts/{partId}/install", requirePrincipal(deps, true, installSubtitleCandidate(deps)))
 	mux.Handle("GET /api/v1/items", requirePrincipal(deps, false, items(deps)))
 	mux.Handle("GET /api/v1/items/{itemId}", requirePrincipal(deps, false, itemDetail(deps)))
 	mux.Handle("POST /api/v1/playback/decide", requirePrincipal(deps, false, playbackDecide(deps)))
