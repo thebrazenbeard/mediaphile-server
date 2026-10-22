@@ -10,6 +10,146 @@
     }
   ],
   "paths": {
+    "/api/v1/libraries/{libraryId}/subtitles": {
+      "get": {
+        "operationId": "listLibrarySubtitleReviews",
+        "summary": "Admin-only paginated subtitle coverage and locally discoverable candidates",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subtitle review page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subtitles/parts/{partId}": {
+      "get": {
+        "operationId": "reviewSubtitlePart",
+        "summary": "Admin-only SRT/embedded-text OCR and timing review; read-only",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detected English subtitle coverage, local candidates and embedded text OCR findings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subtitles/parts/{partId}/install": {
+      "post": {
+        "operationId": "installSubtitleCandidate",
+        "summary": "Admin-only explicit install of a locally discovered verified English SRT using exclusive create",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "candidateId"
+                ],
+                "properties": {
+                  "candidateId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "New English sidecar SHA-256 verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rejected candidate or existing sidecar"
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "getHealth",

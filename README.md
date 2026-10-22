@@ -40,6 +40,10 @@ Current API includes local bootstrap/login/logout, libraries and scans, browse/s
 
 **Continue Watching:** `GET /api/v1/users/me/continue-watching?limit=12` returns only that authenticated user's resumable, playable movies and episodes. See [the API contract](docs/CONTINUE_WATCHING_V1.md).
 
+## Subtitle review (draft)
+
+Admin-only local subtitle discovery, existing/embedded-text OCR checks (both directions of I/l confusion), and explicit SHA-256-verified exclusive-create SRT installation are documented in [Subtitle discovery and OCR V1](docs/SUBTITLE_DISCOVERY_AND_OCR_V1.md). This is not an online subtitle-provider downloader or an automatic repair job.
+
 ## Build and run locally
 
 Requires **Go 1.24+**, `ffprobe` to scan video files, and `ffmpeg` for remux/transcoding.
