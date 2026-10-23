@@ -56,15 +56,15 @@ The incremental queue stores 1-50 part inspections per explicit refresh and
 reports whether they are excluded, covered, need source review, or need published
 subtitle discovery. No background worker is enabled.
 
-An explicit admin search can look up OpenSubtitles metadata after the server operator configures MEDIAPHILE_OPENSUBTITLES_API_KEY; no video or source content is uploaded and no subtitles are downloaded or published.
+An explicit admin search can look up OpenSubtitles metadata after the server operator configures MEDIAPHILE_OPENSUBTITLES_API_KEY; no video or source content is uploaded. An additional explicit admin API can download one selected subtitle into isolated review staging after configuring MEDIAPHILE_OPENSUBTITLES_TOKEN and MEDIAPHILE_SUBTITLE_STAGE_ROOT. It never publishes a subtitle next to the media.
 
-This initial integration does **not** implement provider downloads, automatic
+This initial integration does **not** implement automatic provider downloads,
 timing synchronization, model transcription, or scheduled writes. All install,
 merge and DSM runtime qualification remain separate.
 
 ## Build and run locally
 
-Requires **Go 1.24+**, `ffprobe` to scan video files, and `ffmpeg` for remux/transcoding.
+Requires **Go 1.26+** (as declared in `go.mod`), `ffprobe` to scan video files, and `ffmpeg` for remux/transcoding.
 
 ```sh
 go mod download

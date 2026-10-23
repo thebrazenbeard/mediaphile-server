@@ -20,7 +20,7 @@ These endpoints never open, mutate, remove, or rename a media file or subtitle. 
 
 ## Limits of this phase
 
-This is a durable queue/decision foundation, not a finished automated subtitle engine. Provider-backed internet downloads, release alignment via FFsubsync/ALASS, ASR fallback, retry orchestration and autonomous publication are NOT implemented here. They require their own adapters, per-file provenance, tests and review. Historical denied NAS actions are not bypassed by this code.
+This is a durable queue/decision foundation, not a finished automated subtitle engine. Later sections document bounded provider-backed **review staging** and internal FFsubsync staging; automatic release alignment, ASR fallback, retry orchestration and autonomous publication are NOT implemented here. Historical denied NAS actions are not bypassed by this code.
 
 Source tests and UI builds are not evidence of DSM install or playback qualification. Merge and production deployment require separate authorization and verification.
 
@@ -98,3 +98,31 @@ metadata (source ID, file ID, release, trusted flag) is advisory: exact cuts,
 timing, real transcription fidelity, license, and source provenance must still
 be verified before a future separately authorized download/install workflow.
 The OpenSubtitles API is an external provider with its own keys and quotas.
+
+## Explicit isolated published-SRT staging (V1.4, source only)
+
+POST /api/v1/subtitles/parts/{partId}/published/stage accepts a selected
+`{"fileId": 123}` from the manual search result. It is admin-only, denies
+skip/review dispositions, and requires three operator-configured environment
+values: `MEDIAPHILE_OPENSUBTITLES_API_KEY`,
+`MEDIAPHILE_OPENSUBTITLES_TOKEN` (the account bearer token), and
+`MEDIAPHILE_SUBTITLE_STAGE_ROOT` (an existing private directory separate
+from the media directory). Missing configuration returns 503. No credential
+or provider temporary URL is persisted by the adapter.
+
+The provider download-ticket POST goes only to the fixed OpenSubtitles API
+host. A temporary HTTPS file URL is accepted only from the specific
+`www.opensubtitles.com/download/` path; the follow-up GET carries neither
+API key nor bearer token. Redirects are rejected. The result is limited to
+2 MiB, validated as UTF-8 SRT, audited against indexed media duration, and
+written with an exclusive create under a new private staging directory.
+Invalid or failed attempts remove their staging artifacts. It checks that
+the indexed video did not change during the operation and never writes a
+media sidecar. The endpoint returns a staged SHA-256 and audit as an
+**unverified review candidate**, not installation approval. Each explicit
+request may spend provider quota; no automatic retry is performed.
+
+This is a server/API slice only. It has mocked-network tests but no live
+provider credential, NAS installation, provider playback comparison, worker,
+or automatic publishing. A future client control must separately expose
+the explicit stage action and review state; no silent background downloads.
