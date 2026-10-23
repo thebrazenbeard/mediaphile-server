@@ -4,7 +4,7 @@ The server is designed for a private LAN, without a Plex account or Internet dep
 
 ## Build and test
 
-Requires Go 1.24 or newer, and optional `ffprobe`/`ffmpeg` binaries on `PATH` for media scanning and transcoding.
+Requires Go 1.26 or newer (per `go.mod`), and optional `ffprobe`/`ffmpeg` binaries on `PATH` for media scanning and transcoding.
 
 ```sh
 go test -p 1 ./...

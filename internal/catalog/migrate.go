@@ -15,6 +15,8 @@ type migration struct {
 var migrations = []migration{
 	{version: 1, sql: schemamigrations.Initial},
 	{version: 2, sql: schemamigrations.KnowledgeWebhooks},
+	{version: 3, sql: schemamigrations.SubtitleDecisions},
+	{version: 4, sql: schemamigrations.SubtitleQueue},
 }
 
 func applyMigrations(db *sql.DB) error {

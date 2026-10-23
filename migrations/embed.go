@@ -11,3 +11,12 @@ var Initial string
 //
 //go:embed 002_knowledge_webhooks.sql
 var KnowledgeWebhooks string
+
+// SubtitleDecisions stores user-controlled review/exclusion policy separately from media coverage.
+//
+//go:embed 003_subtitle_decisions.sql
+var SubtitleDecisions string
+
+// SubtitleQueue is the read-only recovery planning cache.
+//go:embed 004_subtitle_queue.sql
+var SubtitleQueue string

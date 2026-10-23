@@ -12,10 +12,12 @@ import (
 )
 
 type subtitlePartReview struct {
-	PartID   string                    `json:"partId"`
-	FileName string                    `json:"fileName"`
-	Review   subtitles.Review          `json:"review"`
-	Embedded []subtitles.EmbeddedAudit `json:"embedded"`
+	PartID     string                    `json:"partId"`
+	FileName   string                    `json:"fileName"`
+	Review     subtitles.Review          `json:"review"`
+	Embedded   []subtitles.EmbeddedAudit `json:"embedded"`
+	Decision   catalog.SubtitleDecision  `json:"decision"`
+	NextAction string                    `json:"nextAction"`
 }
 
 func collectSubtitlePart(deps Dependencies, r *http.Request, partID string, inspect bool) (subtitlePartReview, error) {
@@ -48,7 +50,12 @@ func collectSubtitlePart(deps Dependencies, r *http.Request, partID string, insp
 	if err != nil {
 		return subtitlePartReview{}, err
 	}
-	item := subtitlePartReview{PartID: partID, FileName: filepath.Base(part.Path), Review: review, Embedded: []subtitles.EmbeddedAudit{}}
+	decision, err := deps.Catalog.SubtitleDecision(r.Context(), partID)
+	if err != nil {
+		return subtitlePartReview{}, err
+	}
+	item := subtitlePartReview{PartID: partID, FileName: filepath.Base(part.Path), Review: review, Embedded: []subtitles.EmbeddedAudit{}, Decision: decision}
+	item.NextAction = subtitleNextAction(review, decision)
 	if inspect {
 		ffmpeg := ""
 		if deps.FFmpegAvailable {
@@ -151,6 +158,15 @@ func installSubtitleCandidate(deps Dependencies) http.HandlerFunc {
 		part, source, err := deps.Catalog.GetMediaPartWithSource(r.Context(), r.PathValue("partId"))
 		if err != nil || !part.Available || !source.Available {
 			writeError(w, 404, "MEDIA_UNAVAILABLE", "media part not available")
+			return
+		}
+		decision, err := deps.Catalog.SubtitleDecision(r.Context(), part.ID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle policy unavailable")
+			return
+		}
+		if decision.Disposition != "active" {
+			writeError(w, 409, "SUBTITLE_DECISION_HOLD", "video is skipped or held for review; restore active before installing")
 			return
 		}
 		installed, err := subtitles.Install(part.Path, source.DurationMS, request.CandidateID)
