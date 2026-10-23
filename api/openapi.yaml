@@ -1038,6 +1038,120 @@
           }
         }
       }
+    },
+    "/api/v1/libraries/{libraryId}/subtitles/queue": {
+      "get": {
+        "operationId": "getLibrarySubtitleQueue",
+        "summary": "Read persisted, advisory subtitle recovery queue for a library",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached or refreshed page. Not an installed subtitle guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleQueuePage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/libraries/{libraryId}/subtitles/queue/refresh": {
+      "post": {
+        "operationId": "refreshLibrarySubtitleQueue",
+        "summary": "Inspect and persist up to 50 media subtitle decisions without writing media files",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubtitleQueueRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cached or refreshed page. Not an installed subtitle guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleQueuePage"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2003,6 +2117,114 @@
                 }
               }
             }
+          }
+        }
+      },
+      "SubtitleQueueItem": {
+        "type": "object",
+        "required": [
+          "partId",
+          "fileName",
+          "action",
+          "coverage",
+          "disposition",
+          "candidateCount",
+          "observedSize",
+          "observedModTimeNs"
+        ],
+        "properties": {
+          "partId": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "excluded",
+              "manual_review",
+              "covered",
+              "inspect_existing",
+              "review_local_candidate",
+              "search_published"
+            ]
+          },
+          "coverage": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "active",
+              "skip",
+              "review"
+            ]
+          },
+          "candidateCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observedSize": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "observedModTimeNs": {
+            "type": "string",
+            "description": "Exact 64-bit media timestamp, string to avoid JavaScript precision loss"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "SubtitleQueuePage": {
+        "type": "object",
+        "required": [
+          "planned",
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "planned": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubtitleQueueItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SubtitleQueueRefreshRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       }

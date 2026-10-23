@@ -23,3 +23,28 @@ These endpoints never open, mutate, remove, or rename a media file or subtitle. 
 This is a durable queue/decision foundation, not a finished automated subtitle engine. Provider-backed internet downloads, release alignment via FFsubsync/ALASS, ASR fallback, retry orchestration and autonomous publication are NOT implemented here. They require their own adapters, per-file provenance, tests and review. Historical denied NAS actions are not bypassed by this code.
 
 Source tests and UI builds are not evidence of DSM install or playback qualification. Merge and production deployment require separate authorization and verification.
+
+
+## Incremental queue planning (V1.1)
+
+Migration 004_subtitle_queue.sql persists one advisory observation per media
+part. Admin-only POST /api/v1/libraries/{libraryId}/subtitles/queue/refresh
+inspects a bounded page of 1-50 indexed media parts, including sidecars and
+current active/skip/review decisions, then commits all queue observations in
+one SQLite transaction. Any filesystem inspection failure holds the entire
+page without changing existing queue records. The response lists only that
+media page; GET /api/v1/libraries/{libraryId}/subtitles/queue reads the
+persisted queued observations.
+
+Actions: excluded, manual_review, covered, inspect_existing,
+review_local_candidate, search_published. Existing English sidecars with
+quality warnings get inspect_existing rather than covered. Manual
+candidate installation is disallowed until a skip/review decision is returned
+to active. No Internet access, speech transcription, subtitle replacement,
+or automatic publication occurs during refresh.
+
+Queue observations are cached and may be stale after media changes until
+refreshed. Pagination applies to currently indexed media on POST and to stored
+queue records on GET. Stable media-part IDs survive rescans of the same path.
+The UI exposes an explicit Inspect current page into recovery queue button,
+and no invisible background worker is started.

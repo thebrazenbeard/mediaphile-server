@@ -53,6 +53,8 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/subtitles/parts/{partId}/decision", requirePrincipal(deps, true, subtitleDecision(deps)))
 	mux.Handle("PUT /api/v1/subtitles/parts/{partId}/decision", requirePrincipal(deps, true, subtitleDecision(deps)))
 	mux.Handle("POST /api/v1/subtitles/decisions/import", requirePrincipal(deps, true, subtitleImportExclusions(deps)))
+	mux.Handle("GET /api/v1/libraries/{libraryId}/subtitles/queue", requirePrincipal(deps, true, librarySubtitleQueue(deps, false)))
+	mux.Handle("POST /api/v1/libraries/{libraryId}/subtitles/queue/refresh", requirePrincipal(deps, true, librarySubtitleQueue(deps, true)))
 	mux.Handle("POST /api/v1/subtitles/parts/{partId}/install", requirePrincipal(deps, true, installSubtitleCandidate(deps)))
 	mux.Handle("GET /api/v1/items", requirePrincipal(deps, false, items(deps)))
 	mux.Handle("GET /api/v1/items/{itemId}", requirePrincipal(deps, false, itemDetail(deps)))

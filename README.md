@@ -52,6 +52,10 @@ manifest import can preserve prior approved exclusions without copying old
 recovery scripts to the NAS. A skipped video is never counted as subtitled.
 See [Subtitle Manager State V1](docs/SUBTITLE_MANAGER_STATE_V1.md).
 
+The incremental queue stores 1-50 part inspections per explicit refresh and
+reports whether they are excluded, covered, need source review, or need published
+subtitle discovery. No background worker is enabled.
+
 This initial integration does **not** implement provider downloads, automatic
 timing synchronization, model transcription, or scheduled writes. All install,
 merge and DSM runtime qualification remain separate.

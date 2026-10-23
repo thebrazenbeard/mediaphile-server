@@ -20,7 +20,15 @@ func subtitleNextAction(review subtitles.Review, decision catalog.SubtitleDecisi
 	case "review":
 		return "manual_review"
 	}
-	if review.Coverage == "external_english" || review.Coverage == "embedded_english" {
+	if review.Coverage == "embedded_english" {
+		return "covered"
+	}
+	if review.Coverage == "external_english" {
+		for _, sidecar := range review.ExistingAudits {
+			if sidecar.Language == "en" && sidecar.Status != "ready" {
+				return "inspect_existing"
+			}
+		}
 		return "covered"
 	}
 	if len(review.Existing) > 0 {

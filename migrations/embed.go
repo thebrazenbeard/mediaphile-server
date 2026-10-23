@@ -16,3 +16,7 @@ var KnowledgeWebhooks string
 //
 //go:embed 003_subtitle_decisions.sql
 var SubtitleDecisions string
+
+// SubtitleQueue is the read-only recovery planning cache.
+//go:embed 004_subtitle_queue.sql
+var SubtitleQueue string

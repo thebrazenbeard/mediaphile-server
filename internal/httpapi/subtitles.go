@@ -160,6 +160,15 @@ func installSubtitleCandidate(deps Dependencies) http.HandlerFunc {
 			writeError(w, 404, "MEDIA_UNAVAILABLE", "media part not available")
 			return
 		}
+		decision, err := deps.Catalog.SubtitleDecision(r.Context(), part.ID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle policy unavailable")
+			return
+		}
+		if decision.Disposition != "active" {
+			writeError(w, 409, "SUBTITLE_DECISION_HOLD", "video is skipped or held for review; restore active before installing")
+			return
+		}
 		installed, err := subtitles.Install(part.Path, source.DurationMS, request.CandidateID)
 		if err != nil {
 			writeError(w, 409, "SUBTITLE_INSTALL_BLOCKED", err.Error())
