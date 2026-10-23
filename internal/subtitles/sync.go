@@ -1,6 +1,7 @@
 package subtitles
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -45,21 +46,39 @@ func ExecFFsubsync(ctx context.Context, binary string, args ...string) error {
 		return fmt.Errorf("ffsubsync executable rejected: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, binary, args...)
-	output, err := cmd.CombinedOutput()
+	// Capture only bounded diagnostics to prevent verbose external tools from
+	// exhausting the server's memory. The writer acknowledges excess bytes.
+	sink := &syncDiagnosticBuffer{max: 4096}
+	cmd.Stdout = sink
+	cmd.Stderr = sink
+	err := cmd.Run()
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		// Do not expose large external command output or local filenames to
-		// unauthenticated clients; this is a local-only adapter.
-		if len(output) > 400 {
-			output = output[:400]
-		}
-		return fmt.Errorf("ffsubsync execution failed: %w: %s", err, string(output))
+		return fmt.Errorf("ffsubsync execution failed: %w: %s", err, sink.String())
 	}
 	return nil
 }
 
+// syncDiagnosticBuffer is a bounded combined output sink.
+type syncDiagnosticBuffer struct {
+	data bytes.Buffer
+	max  int
+}
+
+func (d *syncDiagnosticBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	remaining := d.max - d.data.Len()
+	if remaining > 0 {
+		if remaining > n {
+			remaining = n
+		}
+		_, _ = d.data.Write(p[:remaining])
+	}
+	return n, nil
+}
+func (d *syncDiagnosticBuffer) String() string { return d.data.String() }
 func regularFile(path string, maxSize int64) (os.FileInfo, error) {
 	info, err := os.Lstat(path)
 	if err != nil {

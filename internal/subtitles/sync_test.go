@@ -209,3 +209,19 @@ func TestExecFFsubsyncRequiresTrustedAbsoluteExecutable(t *testing.T) {
 		t.Fatal("PATH-resolved untrusted executable accepted")
 	}
 }
+
+func TestSyncDiagnosticBufferBoundsExternalOutput(t *testing.T) {
+	sink := &syncDiagnosticBuffer{max: 16}
+	if n, err := sink.Write(bytes.Repeat([]byte("x"), 50000)); err != nil || n != 50000 {
+		t.Fatalf("writer should discard excess without failing: n=%d err=%v", n, err)
+	}
+	if len(sink.String()) != 16 {
+		t.Fatalf("unbounded external stdout: %d", len(sink.String()))
+	}
+	if _, err := sink.Write(bytes.Repeat([]byte("z"), 50000)); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.String()) != 16 {
+		t.Fatal("diagnostic output exceeded configured cap")
+	}
+}
