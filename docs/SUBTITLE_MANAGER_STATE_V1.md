@@ -73,3 +73,28 @@ worker, endpoint, scheduled run, installed ffsubsync binary, or NAS runtime
 qualification exists. Integration must supply a trusted executable and a
 separate staging volume, durable provenance and a reviewed publication gate.
 Previously denied NAS recovery operations remain held.
+
+
+## Explicit read-only published subtitle discovery (V1.3)
+
+The admin-only POST /api/v1/subtitles/parts/{partId}/published/search
+endpoint supports manual provider metadata lookups. It takes a title query,
+optional IMDb identifier, or a default title derived from the selected
+media basename. It never transmits the full NAS media path, uploads video,
+downloads subtitle files, modifies sidecars, or schedules repeat requests.
+Skip/review dispositions hold this endpoint before any external request.
+
+When configured, the server reads MEDIAPHILE_OPENSUBTITLES_API_KEY from its
+runtime environment and sends a single authenticated request to the fixed
+https://api.opensubtitles.com/api/v1/subtitles endpoint. Missing keys return
+503 without calling the provider. Credentials must not be checked into
+source control or included in logs. Search requires explicit admin UI action;
+this environment variable is NOT installed in any NAS runtime by this PR.
+
+The adapter handles redirects without following them, provider rate limits
+without hammering/retrying, size bounds on JSON, and filters non-English,
+machine-translated, AI-translated, and foreign-parts-only results. Candidate
+metadata (source ID, file ID, release, trusted flag) is advisory: exact cuts,
+timing, real transcription fidelity, license, and source provenance must still
+be verified before a future separately authorized download/install workflow.
+The OpenSubtitles API is an external provider with its own keys and quotas.

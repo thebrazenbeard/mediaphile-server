@@ -1152,6 +1152,59 @@
           }
         }
       }
+    },
+    "/api/v1/subtitles/parts/{partId}/published/search": {
+      "post": {
+        "operationId": "searchPublishedSubtitles",
+        "summary": "Explicit admin-only provider metadata lookup; no download or publish",
+        "description": "Only uses configured server OpenSubtitles API key and selected title or IMDb ID. Does not upload media or store credentials. Rate limit and missing-key errors are reported without retry.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishedSubtitleSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Published subtitle candidates, not verified synced subtitles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedSubtitleSearchReply"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Skipped or review-held media cannot search"
+          },
+          "429": {
+            "description": "External provider quota"
+          },
+          "503": {
+            "description": "No API key configured"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2225,6 +2278,103 @@
           "offset": {
             "type": "integer",
             "minimum": 0
+          }
+        }
+      },
+      "PublishedSubtitleCandidate": {
+        "type": "object",
+        "required": [
+          "provider",
+          "subtitleId",
+          "fileId",
+          "release",
+          "fileName",
+          "language",
+          "trusted",
+          "hearingImpaired",
+          "moviehashMatch"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "subtitleId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "release": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "trusted": {
+            "type": "boolean"
+          },
+          "hearingImpaired": {
+            "type": "boolean"
+          },
+          "moviehashMatch": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PublishedSubtitleSearchReply": {
+        "type": "object",
+        "required": [
+          "partId",
+          "provider",
+          "candidates",
+          "downloaded",
+          "published",
+          "note"
+        ],
+        "properties": {
+          "partId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublishedSubtitleCandidate"
+            }
+          },
+          "downloaded": {
+            "type": "boolean"
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "PublishedSubtitleSearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 180,
+            "description": "Release title only; no full media path"
+          },
+          "imdbId": {
+            "type": "string"
+          },
+          "year": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2100
           }
         }
       }
