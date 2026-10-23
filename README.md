@@ -58,6 +58,10 @@ subtitle discovery. No background worker is enabled.
 
 An explicit admin search can look up OpenSubtitles metadata after the server operator configures MEDIAPHILE_OPENSUBTITLES_API_KEY; no video or source content is uploaded and no subtitles are downloaded or published.
 
+OpenSubtitles metadata searches now cache success for 24 hours and persist a
+provider-wide cooldown on HTTP 429; no credentials or subtitle files are cached.
+This limits duplicate queries and avoids hammering the provider.
+
 This initial integration does **not** implement provider downloads, automatic
 timing synchronization, model transcription, or scheduled writes. All install,
 merge and DSM runtime qualification remain separate.

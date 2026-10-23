@@ -1,14 +1,19 @@
 package httpapi
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/thebrazenbeard/mediaphile-server/internal/subtitles"
 )
@@ -16,6 +21,9 @@ import (
 // publishedSubtitleSearch performs one explicitly requested metadata-only
 // provider search; the server never downloads or publishes a subtitle here.
 func publishedSubtitleSearch(deps Dependencies) http.HandlerFunc {
+	// Serialize lookups in this router process to avoid concurrent duplicate
+	// provider requests. The persistent SQLite cache survives restarts.
+	var lookupMu sync.Mutex
 	return func(w http.ResponseWriter, r *http.Request) {
 		if deps.Catalog == nil {
 			writeError(w, 503, "CATALOG_UNAVAILABLE", "catalog unavailable")
@@ -70,19 +78,91 @@ func publishedSubtitleSearch(deps Dependencies) http.HandlerFunc {
 			writeError(w, 503, "SUBTITLE_PROVIDER_NOT_CONFIGURED", "OpenSubtitles API key is not configured")
 			return
 		}
+		// API credentials are checked before cache access. Cached public metadata
+		// is not a substitute for provider configuration or access controls.
+		queryHash := providerQueryHash(query)
+		lookupMu.Lock()
+		defer lookupMu.Unlock()
+		if r.Context().Err() != nil {
+			writeError(w, 408, "SUBTITLE_SEARCH_CANCELLED", "provider search cancelled")
+			return
+		}
+		cachedJSON, hit, err := deps.Catalog.ProviderCachedCandidates(r.Context(), partID, queryHash, time.Now().UnixMilli())
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "provider cache unavailable")
+			return
+		}
+		if hit {
+			var cached []subtitles.PublishedCandidate
+			if err := json.Unmarshal(cachedJSON, &cached); err != nil {
+				writeError(w, 500, "CATALOG_ERROR", "cached provider metadata invalid")
+				return
+			}
+			writePublishedChoices(w, partID, cached, true)
+			return
+		}
+		blocked, err := deps.Catalog.SubtitleProviderBlocked(r.Context(), "opensubtitles", time.Now().UnixMilli())
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "provider cooldown unavailable")
+			return
+		}
+		if blocked {
+			writeError(w, 429, "SUBTITLE_PROVIDER_RATE_LIMITED", "provider cooldown active; retry later")
+			return
+		}
 		choices, err := subtitles.SearchOpenSubtitles(r.Context(), deps.SubtitleProviderClient, key, query)
 		if errors.Is(err, subtitles.ErrSubtitleProviderRateLimited) {
-			writeError(w, 429, "SUBTITLE_PROVIDER_RATE_LIMITED", "provider rate limit reached; try later")
+			// A real HTTP 429 pauses *all* lookups of this provider for one
+			// hour. Never cache failure bodies or make an immediate retry.
+			if pauseErr := deps.Catalog.PauseSubtitleProvider(r.Context(), "opensubtitles", time.Now().Add(time.Hour).UnixMilli()); pauseErr != nil {
+				writeError(w, 503, "CATALOG_ERROR", "could not persist provider cooldown")
+				return
+			}
+			writeError(w, 429, "SUBTITLE_PROVIDER_RATE_LIMITED", "provider rate limit reached; retry later")
 			return
 		}
 		if err != nil {
 			writeError(w, 502, "SUBTITLE_PROVIDER_UNAVAILABLE", "provider lookup failed")
 			return
 		}
-		writeJSON(w, 200, map[string]any{
-			"partId": partID, "provider": "opensubtitles", "candidates": choices,
-			"downloaded": false, "published": false,
-			"note": "Provider metadata only; release identity and audio synchronization are unverified",
-		})
+		if choices == nil {
+			choices = []subtitles.PublishedCandidate{}
+		}
+		blob, err := json.Marshal(choices)
+		if err != nil {
+			writeError(w, 502, "SUBTITLE_PROVIDER_UNAVAILABLE", "provider results could not be encoded")
+			return
+		}
+		if err := deps.Catalog.SaveProviderCandidates(r.Context(), partID, queryHash, blob, time.Now().Add(24*time.Hour).UnixMilli()); err != nil {
+			writeError(w, 503, "CATALOG_ERROR", "provider results could not be cached")
+			return
+		}
+		writePublishedChoices(w, partID, choices, false)
 	}
+}
+
+// providerQueryHash normalizes query spelling without storing credentials or
+// local media paths; IMDb lookups intentionally ignore fallback title/year.
+func providerQueryHash(q subtitles.PublishedQuery) string {
+	identity := ""
+	if q.IMDbID != "" {
+		numeric := strings.TrimLeft(strings.TrimPrefix(q.IMDbID, "tt"), "0")
+		identity = "imdb:" + numeric
+	} else {
+		title := strings.ToLower(strings.Join(strings.Fields(q.Query), " "))
+		identity = fmt.Sprintf("title:%s;year:%d", title, q.Year)
+	}
+	sum := sha256.Sum256([]byte("opensubtitles:v1:" + identity))
+	return hex.EncodeToString(sum[:])
+}
+
+func writePublishedChoices(w http.ResponseWriter, partID string, choices []subtitles.PublishedCandidate, cached bool) {
+	if choices == nil {
+		choices = []subtitles.PublishedCandidate{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"partId": partID, "provider": "opensubtitles", "candidates": choices,
+		"downloaded": false, "published": false, "cached": cached,
+		"note": "Provider metadata only; release identity and audio synchronization are unverified",
+	})
 }

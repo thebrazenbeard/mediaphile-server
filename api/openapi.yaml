@@ -1157,7 +1157,7 @@
       "post": {
         "operationId": "searchPublishedSubtitles",
         "summary": "Explicit admin-only provider metadata lookup; no download or publish",
-        "description": "Only uses configured server OpenSubtitles API key and selected title or IMDb ID. Does not upload media or store credentials. Rate limit and missing-key errors are reported without retry.",
+        "description": "Explicit admin-only metadata search of OpenSubtitles. Results, including empty lists, are cached for 24 hours per media part and canonical query. Provider 429 responses persist a shared one-hour cooldown. SQLite never stores API keys, media paths or subtitle bytes. Searches never download or install subtitles, and skips/review holds always block a lookup even if cached.",
         "security": [
           {
             "bearerAuth": []
@@ -1198,7 +1198,7 @@
             "description": "Skipped or review-held media cannot search"
           },
           "429": {
-            "description": "External provider quota"
+            "description": "Provider rate limit reached or persistent one-hour cooldown still active"
           },
           "503": {
             "description": "No API key configured"
@@ -2333,7 +2333,8 @@
           "candidates",
           "downloaded",
           "published",
-          "note"
+          "note",
+          "cached"
         ],
         "properties": {
           "partId": {
@@ -2356,6 +2357,10 @@
           },
           "note": {
             "type": "string"
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "True when metadata was served from persistent SQLite cache without a provider request"
           }
         }
       },
