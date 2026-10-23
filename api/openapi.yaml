@@ -920,6 +920,124 @@
           }
         }
       }
+    },
+    "/api/v1/subtitles/parts/{partId}/decision": {
+      "get": {
+        "operationId": "getSubtitleDecision",
+        "summary": "Admin-only read of durable per-video subtitle decision",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current policy; defaults to active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleDecision"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putSubtitleDecision",
+        "summary": "Admin-only save skip/review/active policy without editing media",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubtitleDecisionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleDecision"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subtitles/decisions/import": {
+      "post": {
+        "operationId": "importSubtitleExclusions",
+        "summary": "Atomically import prior owner-approved skips matched to exact indexed media paths. Existing decisions win.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubtitleExclusionImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Number of newly imported decisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "imported": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Unknown media; entire import rejected"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1805,6 +1923,86 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "SubtitleDecision": {
+        "type": "object",
+        "required": [
+          "partId",
+          "disposition",
+          "reason"
+        ],
+        "properties": {
+          "partId": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "active",
+              "skip",
+              "review"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "description": "Persistent subtitle recovery policy. Skip does not imply installed coverage."
+      },
+      "SubtitleDecisionUpdate": {
+        "type": "object",
+        "required": [
+          "disposition",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "active",
+              "skip",
+              "review"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 256
+          }
+        }
+      },
+      "SubtitleExclusionImport": {
+        "type": "object",
+        "required": [
+          "exclusions"
+        ],
+        "properties": {
+          "exclusions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 250,
+            "items": {
+              "type": "object",
+              "required": [
+                "video",
+                "reason"
+              ],
+              "properties": {
+                "video": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 256
+                }
+              }
+            }
           }
         }
       }

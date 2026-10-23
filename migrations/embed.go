@@ -11,3 +11,8 @@ var Initial string
 //
 //go:embed 002_knowledge_webhooks.sql
 var KnowledgeWebhooks string
+
+// SubtitleDecisions stores user-controlled review/exclusion policy separately from media coverage.
+//
+//go:embed 003_subtitle_decisions.sql
+var SubtitleDecisions string

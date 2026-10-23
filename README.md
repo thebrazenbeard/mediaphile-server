@@ -44,6 +44,18 @@ Current API includes local bootstrap/login/logout, libraries and scans, browse/s
 
 Admin-only local subtitle discovery, existing/embedded-text OCR checks (both directions of I/l confusion), and explicit SHA-256-verified exclusive-create SRT installation are documented in [Subtitle discovery and OCR V1](docs/SUBTITLE_DISCOVERY_AND_OCR_V1.md). This is not an online subtitle-provider downloader or an automatic repair job.
 
+## Subtitle Manager decisions (feature branch)
+
+Admin-only, durable per-video Active / Skip / Review decisions live in local SQLite
+and are shown in the existing Mediaphile Subtitle Manager UI. An atomic JSON
+manifest import can preserve prior approved exclusions without copying old
+recovery scripts to the NAS. A skipped video is never counted as subtitled.
+See [Subtitle Manager State V1](docs/SUBTITLE_MANAGER_STATE_V1.md).
+
+This initial integration does **not** implement provider downloads, automatic
+timing synchronization, model transcription, or scheduled writes. All install,
+merge and DSM runtime qualification remain separate.
+
 ## Build and run locally
 
 Requires **Go 1.24+**, `ffprobe` to scan video files, and `ffmpeg` for remux/transcoding.
