@@ -20,3 +20,7 @@ var SubtitleDecisions string
 // SubtitleQueue is the read-only recovery planning cache.
 //go:embed 004_subtitle_queue.sql
 var SubtitleQueue string
+
+// SubtitleProviderCache stores only public search metadata and quota cooldown.
+//go:embed 005_subtitle_provider_cache.sql
+var SubtitleProviderCache string

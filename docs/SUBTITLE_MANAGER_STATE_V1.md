@@ -98,3 +98,28 @@ metadata (source ID, file ID, release, trusted flag) is advisory: exact cuts,
 timing, real transcription fidelity, license, and source provenance must still
 be verified before a future separately authorized download/install workflow.
 The OpenSubtitles API is an external provider with its own keys and quotas.
+
+
+## Published source lookup cache (V1.2)
+
+Migration 005_subtitle_provider_cache.sql persists only public OpenSubtitles
+metadata, keyed to the indexed media part and a SHA-256 digest of the normalized
+query. Successful result lists (including zero matches) have a 24-hour TTL.
+User skips/review holds still reject searches before reading the cache.
+
+On HTTP 429, a provider-wide one-hour cooldown is stored in SQLite, so
+subsequent search requests fail with 429 rather than repeatedly invoking the
+external provider after a server restart. Other provider errors and invalid
+payloads are not cached. Within one router process, concurrent requests are
+serialized to deduplicate simultaneous identical lookups. This does not claim
+cross-process singleflight or quota coordination across separate installations.
+
+POST /api/v1/subtitles/parts/{partId}/published/search now returns cached
+(boolean). No API key, media path, full video, subtitle bytes, or transcript
+is included in the cache; only the filtered published candidate metadata is
+retained. A configured API key remains required even for cache hits.
+
+The endpoint remains opt-in and metadata-only. It does not download, synchronize,
+publish, or repair an SRT, and it does not bypass any previously denied NAS
+write/recovery operation. Both TTL and cooldown are conservative local policy,
+not guarantees of the provider's current quota state.

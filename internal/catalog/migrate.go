@@ -17,6 +17,7 @@ var migrations = []migration{
 	{version: 2, sql: schemamigrations.KnowledgeWebhooks},
 	{version: 3, sql: schemamigrations.SubtitleDecisions},
 	{version: 4, sql: schemamigrations.SubtitleQueue},
+	{version: 5, sql: schemamigrations.SubtitleProviderCache},
 }
 
 func applyMigrations(db *sql.DB) error {
