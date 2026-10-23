@@ -48,3 +48,28 @@ refreshed. Pagination applies to currently indexed media on POST and to stored
 queue records on GET. Stable media-part IDs survive rescans of the same path.
 The UI exposes an explicit Inspect current page into recovery queue button,
 and no invisible background worker is started.
+
+## Staged FFsubsync adapter (V1.2, internal library only)
+
+The server includes a tested subtitles.StageSync adapter. It accepts a video,
+existing SRT source, trusted explicit ffsubsync executable path and a separate
+staging root outside the media directory. It directly invokes ffsubsync with
+explicit input and output arguments, low-quality rejection, 8 audio sample
+segments, and strict subtitle parsing. Execution is limited to 15 minutes.
+
+It validates non-symlink regular files, checks that the original source and
+media have not changed during processing, hashes both subtitle versions,
+audits the staged result and cleans failed staging attempts. It never publishes
+a sidecar, overwrites the source SRT, or modifies the video. No shell command
+interpolation or Internet subtitle provider is involved.
+
+ReadyForReview means the staged SRT is structurally accepted and differs from
+the source. It does not certify correct release identity, audiovisual sync,
+complete spoken dialogue, or authorization to publish. Unchanged results are
+held for inspection.
+
+This adapter is internal-only, with test-double validation; no production
+worker, endpoint, scheduled run, installed ffsubsync binary, or NAS runtime
+qualification exists. Integration must supply a trusted executable and a
+separate staging volume, durable provenance and a reviewed publication gate.
+Previously denied NAS recovery operations remain held.
