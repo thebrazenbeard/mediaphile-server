@@ -12,18 +12,20 @@ import (
 )
 
 type Dependencies struct {
-	Catalog          *catalog.Repository
-	Auth             *auth.Service
-	Events           *events.Bus
-	Webhooks         *events.WebhookService
-	Sessions         *playback.SessionManager
-	Transcodes       *transcode.Manager
-	Scanner          *library.Scanner
-	UI               http.Handler
-	ServerID         string
-	ServerName       string
-	FFmpegAvailable  bool
-	FFprobeAvailable bool
+	Catalog                *catalog.Repository
+	Auth                   *auth.Service
+	Events                 *events.Bus
+	Webhooks               *events.WebhookService
+	Sessions               *playback.SessionManager
+	Transcodes             *transcode.Manager
+	Scanner                *library.Scanner
+	UI                     http.Handler
+	ServerID               string
+	ServerName             string
+	FFmpegAvailable        bool
+	FFmpegBinary           string
+	FFprobeAvailable       bool
+	SubtitleProviderClient *http.Client
 }
 
 func NewRouter(values ...Dependencies) http.Handler {
@@ -47,6 +49,16 @@ func NewRouter(values ...Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/libraries", requirePrincipal(deps, false, libraries(deps)))
 	mux.Handle("POST /api/v1/libraries", requirePrincipal(deps, true, createLibrary(deps)))
 	mux.Handle("POST /api/v1/libraries/{libraryId}/scan", requirePrincipal(deps, true, scanLibrary(deps)))
+	mux.Handle("GET /api/v1/libraries/{libraryId}/subtitles", requirePrincipal(deps, true, librarySubtitleOverview(deps)))
+	mux.Handle("GET /api/v1/subtitles/parts/{partId}", requirePrincipal(deps, true, reviewSubtitlePart(deps)))
+	mux.Handle("GET /api/v1/subtitles/parts/{partId}/decision", requirePrincipal(deps, true, subtitleDecision(deps)))
+	mux.Handle("PUT /api/v1/subtitles/parts/{partId}/decision", requirePrincipal(deps, true, subtitleDecision(deps)))
+	mux.Handle("POST /api/v1/subtitles/decisions/import", requirePrincipal(deps, true, subtitleImportExclusions(deps)))
+	mux.Handle("GET /api/v1/libraries/{libraryId}/subtitles/queue", requirePrincipal(deps, true, librarySubtitleQueue(deps, false)))
+	mux.Handle("POST /api/v1/libraries/{libraryId}/subtitles/queue/refresh", requirePrincipal(deps, true, librarySubtitleQueue(deps, true)))
+	mux.Handle("POST /api/v1/subtitles/parts/{partId}/install", requirePrincipal(deps, true, installSubtitleCandidate(deps)))
+	mux.Handle("POST /api/v1/subtitles/parts/{partId}/published/search", requirePrincipal(deps, true, publishedSubtitleSearch(deps)))
+	mux.Handle("POST /api/v1/subtitles/parts/{partId}/published/stage", requirePrincipal(deps, true, publishedSubtitleStage(deps)))
 	mux.Handle("GET /api/v1/items", requirePrincipal(deps, false, items(deps)))
 	mux.Handle("GET /api/v1/items/{itemId}", requirePrincipal(deps, false, itemDetail(deps)))
 	mux.Handle("POST /api/v1/playback/decide", requirePrincipal(deps, false, playbackDecide(deps)))

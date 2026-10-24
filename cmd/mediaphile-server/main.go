@@ -69,7 +69,7 @@ func main() {
 	handler := netguard.New(cfg.TrustedProxies, cfg.AllowedCIDRs).Middleware(httpapi.NewRouter(httpapi.Dependencies{
 		Catalog: repo, Auth: authService, Events: eventBus, Webhooks: webhookService, Sessions: sessionManager,
 		Transcodes: transcodeManager, Scanner: scanner, UI: uiHandler, ServerID: serverID, ServerName: serverName,
-		FFmpegAvailable: ffmpegErr == nil, FFprobeAvailable: ffprobeErr == nil,
+		FFmpegAvailable: ffmpegErr == nil, FFmpegBinary: ffmpegPath, FFprobeAvailable: ffprobeErr == nil,
 	}))
 
 	go func() {
