@@ -40,9 +40,31 @@ Current API includes local bootstrap/login/logout, libraries and scans, browse/s
 
 **Continue Watching:** `GET /api/v1/users/me/continue-watching?limit=12` returns only that authenticated user's resumable, playable movies and episodes. See [the API contract](docs/CONTINUE_WATCHING_V1.md).
 
+## Subtitle review (draft)
+
+Admin-only local subtitle discovery, existing/embedded-text OCR checks (both directions of I/l confusion), and explicit SHA-256-verified exclusive-create SRT installation are documented in [Subtitle discovery and OCR V1](docs/SUBTITLE_DISCOVERY_AND_OCR_V1.md). This is not an online subtitle-provider downloader or an automatic repair job.
+
+## Subtitle Manager decisions (feature branch)
+
+Admin-only, durable per-video Active / Skip / Review decisions live in local SQLite
+and are shown in the existing Mediaphile Subtitle Manager UI. An atomic JSON
+manifest import can preserve prior approved exclusions without copying old
+recovery scripts to the NAS. A skipped video is never counted as subtitled.
+See [Subtitle Manager State V1](docs/SUBTITLE_MANAGER_STATE_V1.md).
+
+The incremental queue stores 1-50 part inspections per explicit refresh and
+reports whether they are excluded, covered, need source review, or need published
+subtitle discovery. No background worker is enabled.
+
+An explicit admin search can look up OpenSubtitles metadata after the server operator configures MEDIAPHILE_OPENSUBTITLES_API_KEY; no video or source content is uploaded. An additional explicit admin API can download one selected subtitle into isolated review staging after configuring MEDIAPHILE_OPENSUBTITLES_TOKEN and MEDIAPHILE_SUBTITLE_STAGE_ROOT. It never publishes a subtitle next to the media.
+
+This initial integration does **not** implement automatic provider downloads,
+timing synchronization, model transcription, or scheduled writes. All install,
+merge and DSM runtime qualification remain separate.
+
 ## Build and run locally
 
-Requires **Go 1.24+**, `ffprobe` to scan video files, and `ffmpeg` for remux/transcoding.
+Requires **Go 1.26+** (as declared in `go.mod`), `ffprobe` to scan video files, and `ffmpeg` for remux/transcoding.
 
 ```sh
 go mod download

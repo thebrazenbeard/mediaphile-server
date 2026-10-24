@@ -10,6 +10,146 @@
     }
   ],
   "paths": {
+    "/api/v1/libraries/{libraryId}/subtitles": {
+      "get": {
+        "operationId": "listLibrarySubtitleReviews",
+        "summary": "Admin-only paginated subtitle coverage and locally discoverable candidates",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Subtitle review page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subtitles/parts/{partId}": {
+      "get": {
+        "operationId": "reviewSubtitlePart",
+        "summary": "Admin-only SRT/embedded-text OCR and timing review; read-only",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detected English subtitle coverage, local candidates and embedded text OCR findings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subtitles/parts/{partId}/install": {
+      "post": {
+        "operationId": "installSubtitleCandidate",
+        "summary": "Admin-only explicit install of a locally discovered verified English SRT using exclusive create",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "candidateId"
+                ],
+                "properties": {
+                  "candidateId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "New English sidecar SHA-256 verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rejected candidate or existing sidecar"
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "getHealth",
@@ -778,6 +918,315 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/v1/subtitles/parts/{partId}/decision": {
+      "get": {
+        "operationId": "getSubtitleDecision",
+        "summary": "Admin-only read of durable per-video subtitle decision",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current policy; defaults to active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleDecision"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putSubtitleDecision",
+        "summary": "Admin-only save skip/review/active policy without editing media",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubtitleDecisionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleDecision"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subtitles/decisions/import": {
+      "post": {
+        "operationId": "importSubtitleExclusions",
+        "summary": "Atomically import prior owner-approved skips matched to exact indexed media paths. Existing decisions win.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubtitleExclusionImport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Number of newly imported decisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "imported": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Unknown media; entire import rejected"
+          }
+        }
+      }
+    },
+    "/api/v1/libraries/{libraryId}/subtitles/queue": {
+      "get": {
+        "operationId": "getLibrarySubtitleQueue",
+        "summary": "Read persisted, advisory subtitle recovery queue for a library",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached or refreshed page. Not an installed subtitle guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleQueuePage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/libraries/{libraryId}/subtitles/queue/refresh": {
+      "post": {
+        "operationId": "refreshLibrarySubtitleQueue",
+        "summary": "Inspect and persist up to 50 media subtitle decisions without writing media files",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "libraryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubtitleQueueRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cached or refreshed page. Not an installed subtitle guarantee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtitleQueuePage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/subtitles/parts/{partId}/published/search": {
+      "post": {
+        "operationId": "searchPublishedSubtitles",
+        "summary": "Explicit admin-only provider metadata lookup; no download or publish",
+        "description": "Only uses configured server OpenSubtitles API key and selected title or IMDb ID. Does not upload media or store credentials. Rate limit and missing-key errors are reported without retry.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "partId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishedSubtitleSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Published subtitle candidates, not verified synced subtitles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedSubtitleSearchReply"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Skipped or review-held media cannot search"
+          },
+          "429": {
+            "description": "External provider quota"
+          },
+          "503": {
+            "description": "No API key configured"
+          }
+        }
+      }
+    },
+    "/api/v1/subtitles/parts/{partId}/published/stage": {
+      "post": {
+        "operationId": "stagePublishedSubtitle",
+        "summary": "Download one explicitly selected published SRT into isolated review staging; never install",
+        "description": "Admin-only. Requires configured OpenSubtitles API key, bearer token, and private staging root outside the media directory. Provider quota is spent on the explicit request. No media bytes are uploaded, no provider link is cached, no sidecar is published, and review remains mandatory.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [{"name": "partId", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublishedSubtitleStageRequest"}}}
+        },
+        "responses": {
+          "201": {
+            "description": "Unverified SRT staged outside the media directory",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublishedSubtitleStageReply"}}}
+          },
+          "400": {"description": "Invalid provider file ID"},
+          "409": {"description": "Skipped or review-held media"},
+          "429": {"description": "Provider quota exhausted"},
+          "502": {"description": "Staging, validation, or provider failure; no media changes"},
+          "503": {"description": "Download credentials or staging root missing"}
         }
       }
     }
@@ -1666,6 +2115,330 @@
               "null"
             ]
           }
+        }
+      },
+      "SubtitleDecision": {
+        "type": "object",
+        "required": [
+          "partId",
+          "disposition",
+          "reason"
+        ],
+        "properties": {
+          "partId": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "active",
+              "skip",
+              "review"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "description": "Persistent subtitle recovery policy. Skip does not imply installed coverage."
+      },
+      "SubtitleDecisionUpdate": {
+        "type": "object",
+        "required": [
+          "disposition",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "active",
+              "skip",
+              "review"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 256
+          }
+        }
+      },
+      "SubtitleExclusionImport": {
+        "type": "object",
+        "required": [
+          "exclusions"
+        ],
+        "properties": {
+          "exclusions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 250,
+            "items": {
+              "type": "object",
+              "required": [
+                "video",
+                "reason"
+              ],
+              "properties": {
+                "video": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 256
+                }
+              }
+            }
+          }
+        }
+      },
+      "SubtitleQueueItem": {
+        "type": "object",
+        "required": [
+          "partId",
+          "fileName",
+          "action",
+          "coverage",
+          "disposition",
+          "candidateCount",
+          "observedSize",
+          "observedModTimeNs"
+        ],
+        "properties": {
+          "partId": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "excluded",
+              "manual_review",
+              "covered",
+              "inspect_existing",
+              "review_local_candidate",
+              "search_published"
+            ]
+          },
+          "coverage": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "active",
+              "skip",
+              "review"
+            ]
+          },
+          "candidateCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observedSize": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "observedModTimeNs": {
+            "type": "string",
+            "description": "Exact 64-bit media timestamp, string to avoid JavaScript precision loss"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "SubtitleQueuePage": {
+        "type": "object",
+        "required": [
+          "planned",
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "planned": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubtitleQueueItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SubtitleQueueRefreshRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "PublishedSubtitleCandidate": {
+        "type": "object",
+        "required": [
+          "provider",
+          "subtitleId",
+          "fileId",
+          "release",
+          "fileName",
+          "language",
+          "trusted",
+          "hearingImpaired",
+          "moviehashMatch"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "subtitleId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "release": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "trusted": {
+            "type": "boolean"
+          },
+          "hearingImpaired": {
+            "type": "boolean"
+          },
+          "moviehashMatch": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PublishedSubtitleSearchReply": {
+        "type": "object",
+        "required": [
+          "partId",
+          "provider",
+          "candidates",
+          "downloaded",
+          "published",
+          "note"
+        ],
+        "properties": {
+          "partId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublishedSubtitleCandidate"
+            }
+          },
+          "downloaded": {
+            "type": "boolean"
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "PublishedSubtitleSearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 180,
+            "description": "Release title only; no full media path"
+          },
+          "imdbId": {
+            "type": "string"
+          },
+          "year": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2100
+          }
+        }
+      },
+      "PublishedSubtitleStageRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fileId"],
+        "properties": {"fileId": {"type": "integer", "minimum": 1, "maximum": 2147483647}}
+      },
+      "PublishedSubtitleStageReply": {
+        "type": "object",
+        "required": ["partId", "stage", "downloaded", "published", "note"],
+        "properties": {
+          "partId": {"type": "string"},
+          "stage": {"$ref": "#/components/schemas/PublishedSubtitleStage"},
+          "downloaded": {"type": "boolean"},
+          "published": {"type": "boolean"},
+          "note": {"type": "string"}
+        }
+      },
+      "PublishedSubtitleStage": {
+        "type": "object",
+        "required": ["provider", "fileId", "outputSrt", "sha256", "audit", "readyForReview"],
+        "properties": {
+          "provider": {"type": "string"},
+          "fileId": {"type": "integer", "format": "int64"},
+          "outputSrt": {"type": "string"},
+          "sha256": {"type": "string"},
+          "audit": {
+            "type": "object",
+            "required": ["status", "cues", "sha256", "ocr", "warnings"],
+            "properties": {
+              "status": {"type": "string"},
+              "cues": {"type": "integer"},
+              "sha256": {"type": "string"},
+              "ocr": {"type": "array", "items": {"type": "object", "properties": {"token": {"type": "string"}, "suggestion": {"type": "string"}, "line": {"type": "integer"}}}},
+              "warnings": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "readyForReview": {"type": "boolean"}
         }
       }
     }
