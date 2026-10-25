@@ -28,6 +28,8 @@ func TestOpenAPIContainsImplementedPublicRoutes(t *testing.T) {
 		"/api/v1/libraries":      "get",
 		"/api/v1/items":          "get",
 		"/api/v1/items/{itemId}": "get",
+		"/api/v1/subtitles/parts/{partId}/published/stages/{stageId}": "get",
+		"/api/v1/subtitles/parts/{partId}/published/stages/{stageId}/install": "post",
 	} {
 		if doc.Paths[path] == nil || doc.Paths[path][method] == nil {
 			t.Fatalf("contract missing %s %s", method, path)

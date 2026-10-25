@@ -56,7 +56,11 @@ The incremental queue stores 1-50 part inspections per explicit refresh and
 reports whether they are excluded, covered, need source review, or need published
 subtitle discovery. No background worker is enabled.
 
-An explicit admin search can look up OpenSubtitles metadata after the server operator configures MEDIAPHILE_OPENSUBTITLES_API_KEY; no video or source content is uploaded. An additional explicit admin API can download one selected subtitle into isolated review staging after configuring MEDIAPHILE_OPENSUBTITLES_TOKEN and MEDIAPHILE_SUBTITLE_STAGE_ROOT. It never publishes a subtitle next to the media.
+An explicit admin search can look up OpenSubtitles metadata after the server operator configures MEDIAPHILE_OPENSUBTITLES_API_KEY; no video or source content is uploaded. An additional explicit admin API can download one selected subtitle into isolated review staging after configuring MEDIAPHILE_OPENSUBTITLES_TOKEN and MEDIAPHILE_SUBTITLE_STAGE_ROOT. Staging never writes beside the media. A separate administrator-authenticated, digest-bound, explicitly reviewed request can install an English sidecar using atomic no-overwrite publication.
+
+**Installation is not qualified on the NAS.** Scanning and playback can use a read-only media share, but manual sidecar publication additionally requires an explicitly authorized, writable media mount for the server identity. Do not remount a share writable or grant NAS permissions automatically. Confirm the target filesystem supports atomic hardlinks, that the stage root is private and outside every media library, and that a separate playback service account can read the published sidecar before claiming runtime readiness.
+
+Newly published provider sidecars default to mode `0644` on Unix so playback services can read them. Set `MEDIAPHILE_SUBTITLE_PUBLISH_MODE=0640` when server and playback accounts share a group, or `0600` for a same-account private deployment. Other mode strings fail closed. Staged subtitle bytes and metadata remain private (`0600`); legacy local-candidate installation is a separate path and retains its existing policy.
 
 This initial integration does **not** implement automatic provider downloads,
 timing synchronization, model transcription, or scheduled writes. All install,

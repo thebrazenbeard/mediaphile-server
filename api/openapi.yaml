@@ -1229,6 +1229,43 @@
           "503": {"description": "Download credentials or staging root missing"}
         }
       }
+    },
+    "/api/v1/subtitles/parts/{partId}/published/stages/{stageId}": {
+      "get": {
+        "operationId": "reviewStagedPublishedSubtitle",
+        "summary": "Admin-only bounded full SRT review; no installation or provider call",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "partId", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "stageId", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[0-9a-f]{32}$"}}
+        ],
+        "responses": {
+          "200": {"description": "Bounded subtitle text, integrity and audit metadata; Cache-Control no-store", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublishedSubtitleReview"}}}},
+          "401": {"description": "Authentication required"},
+          "403": {"description": "Admin required"},
+          "409": {"description": "Stage absent, stale, tampered, or bound to another media part"}
+        }
+      }
+    },
+    "/api/v1/subtitles/parts/{partId}/published/stages/{stageId}/install": {
+      "post": {
+        "operationId": "manuallyInstallStagedPublishedSubtitle",
+        "summary": "Admin-only explicit review-confirmed atomic no-overwrite sidecar publication",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"name": "partId", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "stageId", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[0-9a-f]{32}$"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublishedSubtitleInstallRequest"}}}},
+        "responses": {
+          "201": {"description": "New sidecar published", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublishedSubtitleInstallReply"}}}},
+          "200": {"description": "Identical sidecar already present; no new publication", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublishedSubtitleInstallReply"}}}},
+          "400": {"description": "Invalid request body"},
+          "401": {"description": "Authentication required"},
+          "403": {"description": "Admin required"},
+          "409": {"description": "Review not confirmed, candidate changed, policy hold, or sidecar conflict"}
+        }
+      }
     }
   },
   "components": {
@@ -2421,11 +2458,11 @@
       },
       "PublishedSubtitleStage": {
         "type": "object",
-        "required": ["provider", "fileId", "outputSrt", "sha256", "audit", "readyForReview"],
+		"required": ["provider", "fileId", "stageId", "sha256", "audit", "readyForReview"],
         "properties": {
           "provider": {"type": "string"},
           "fileId": {"type": "integer", "format": "int64"},
-          "outputSrt": {"type": "string"},
+          "stageId": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
           "sha256": {"type": "string"},
           "audit": {
             "type": "object",
@@ -2439,6 +2476,37 @@
             }
           },
           "readyForReview": {"type": "boolean"}
+        }
+      },
+      "PublishedSubtitleReview": {
+        "type": "object",
+        "required": ["partId", "stageId", "provider", "fileId", "sha256", "audit", "text", "readyForReview", "published"],
+        "properties": {
+          "partId": {"type": "string"},
+          "stageId": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+          "provider": {"type": "string"},
+          "fileId": {"type": "integer", "format": "int64"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "audit": {"$ref": "#/components/schemas/PublishedSubtitleStage/properties/audit"},
+          "text": {"type": "string", "maxLength": 2097152},
+          "readyForReview": {"type": "boolean"},
+          "published": {"type": "boolean"}
+        }
+      },
+      "PublishedSubtitleInstallRequest": {
+        "type": "object", "additionalProperties": false,
+        "required": ["expectedSha256", "confirmReviewed"],
+        "properties": {"expectedSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "confirmReviewed": {"type": "boolean", "enum": [true]}}
+      },
+      "PublishedSubtitleInstallReply": {
+        "type": "object",
+        "required": ["destinationName", "sha256", "bytes", "source", "alreadyInstalled"],
+        "properties": {
+          "destinationName": {"type": "string"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "bytes": {"type": "integer", "format": "int64"},
+          "source": {"type": "string"},
+          "alreadyInstalled": {"type": "boolean"}
         }
       }
     }

@@ -140,7 +140,7 @@ func publishedSubtitleStage(deps Dependencies) http.HandlerFunc {
 			return
 		}
 		staged, err := subtitles.StageOpenSubtitles(r.Context(), deps.SubtitleProviderClient, key, bearer,
-			input.FileID, part.Path, root, source.DurationMS)
+			input.FileID, partID, part.Path, root, source.DurationMS)
 		if errors.Is(err, subtitles.ErrSubtitleProviderRateLimited) {
 			writeError(w, 429, "SUBTITLE_PROVIDER_RATE_LIMITED", "provider rate limit reached; try later")
 			return
@@ -153,5 +153,104 @@ func publishedSubtitleStage(deps Dependencies) http.HandlerFunc {
 			"partId": partID, "stage": staged, "downloaded": true, "published": false,
 			"note": "Candidate staged for release, timing, and dialogue review; not installed",
 		})
+	}
+}
+
+// reviewedPublishedStage exposes the full bounded text of one explicitly
+// staged file. It never contacts the provider or changes media files.
+func reviewedPublishedStage(deps Dependencies) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Catalog == nil {
+			writeError(w, 503, "CATALOG_UNAVAILABLE", "catalog unavailable")
+			return
+		}
+		partID, stageID := r.PathValue("partId"), r.PathValue("stageId")
+		part, source, err := deps.Catalog.GetMediaPartWithSource(r.Context(), partID)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && (!part.Available || !source.Available)) {
+			writeError(w, 404, "MEDIA_UNAVAILABLE", "media part not found")
+			return
+		}
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "media lookup failed")
+			return
+		}
+		root := os.Getenv("MEDIAPHILE_SUBTITLE_STAGE_ROOT")
+		if root == "" {
+			writeError(w, 503, "SUBTITLE_STAGE_NOT_CONFIGURED", "private staging root not configured")
+			return
+		}
+		review, err := subtitles.ReviewPublishedStage(root, partID, part.Path, source.DurationMS, stageID)
+		if err != nil {
+			writeError(w, 409, "SUBTITLE_STAGE_REVIEW_BLOCKED", "staged subtitle is missing, changed, or not bound to this media part")
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		writeJSON(w, 200, review)
+	}
+}
+
+// manuallyInstallPublishedStage is the only transition from staged provider
+// bytes to a media sidecar. A separate explicit admin request must confirm the
+// displayed SHA and human review, and the server rechecks all policy/bytes.
+func manuallyInstallPublishedStage(deps Dependencies) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if deps.Catalog == nil {
+			writeError(w, 503, "CATALOG_UNAVAILABLE", "catalog unavailable")
+			return
+		}
+		partID, stageID := r.PathValue("partId"), r.PathValue("stageId")
+		var input struct {
+			ExpectedSHA256 string `json:"expectedSha256"`
+			ConfirmReviewed bool   `json:"confirmReviewed"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			writeError(w, 400, "INVALID_JSON", "invalid review confirmation")
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+			writeError(w, 400, "INVALID_JSON", "multiple JSON objects are not allowed")
+			return
+		}
+		if !input.ConfirmReviewed {
+			writeError(w, 409, "SUBTITLE_REVIEW_REQUIRED", "explicit subtitle review confirmation required")
+			return
+		}
+		part, source, err := deps.Catalog.GetMediaPartWithSource(r.Context(), partID)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && (!part.Available || !source.Available)) {
+			writeError(w, 404, "MEDIA_UNAVAILABLE", "media part not found")
+			return
+		}
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "media lookup failed")
+			return
+		}
+		decision, err := deps.Catalog.SubtitleDecision(r.Context(), partID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle decision unavailable")
+			return
+		}
+		if decision.Disposition != "active" {
+			writeError(w, 409, "SUBTITLE_DECISION_HOLD", "video is skipped or held for review")
+			return
+		}
+		root := os.Getenv("MEDIAPHILE_SUBTITLE_STAGE_ROOT")
+		if root == "" {
+			writeError(w, 503, "SUBTITLE_STAGE_NOT_CONFIGURED", "private staging root not configured")
+			return
+		}
+		installed, err := subtitles.InstallPublishedStage(root, partID, part.Path, source.DurationMS, stageID, input.ExpectedSHA256)
+		if err != nil {
+			writeError(w, 409, "SUBTITLE_PUBLISH_BLOCKED", "staged subtitle changed, review failed, or destination is occupied")
+			return
+		}
+		status := 201
+		if installed.AlreadyInstalled {
+			status = 200
+		}
+		writeJSON(w, status, installed)
 	}
 }
