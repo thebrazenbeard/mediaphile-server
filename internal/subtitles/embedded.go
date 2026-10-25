@@ -5,7 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +43,56 @@ func EnglishTrack(language string) bool {
 	}
 }
 func InspectEmbedded(ctx context.Context, ffmpeg, video string, streams []EmbeddedTrack, durationMS int64) []EmbeddedAudit {
+	return inspectEmbedded(ctx, ffmpeg, video, nil, streams, durationMS)
+}
+
+// InspectEmbeddedInLibrary never gives FFmpeg the catalog path. It opens the
+// media through the configured library root, pins the validated regular file,
+// and provides that handle as FFmpeg's standard input. Demuxers that require
+// seeking a pathname may fail; this is an unverified result, never a reason to
+// retry via an unconfined path.
+func InspectEmbeddedInLibrary(ctx context.Context, ffmpeg, libraryRoot, video string, size, modTimeNS int64, streams []EmbeddedTrack, durationMS int64) []EmbeddedAudit {
+	if ffmpeg == "" {
+		return InspectEmbedded(ctx, "", "", streams, durationMS)
+	}
+	file, err := openEmbeddedMediaInLibrary(libraryRoot, video, size, modTimeNS)
+	if err != nil {
+		out := []EmbeddedAudit{}
+		for _, s := range streams {
+			if EnglishTrack(s.Language) {
+				out = append(out, EmbeddedAudit{Index: s.Index, Codec: s.Codec, Status: "unverified", Reason: "cataloged media is not safely accessible inside the library"})
+			}
+		}
+		return out
+	}
+	defer file.Close()
+	return inspectEmbedded(ctx, ffmpeg, "pipe:0", file, streams, durationMS)
+}
+
+func openEmbeddedMediaInLibrary(libraryRoot, video string, size, modTimeNS int64) (*os.File, error) {
+	mediaRoot, err := openLibraryMediaRoot(libraryRoot, video, size, modTimeNS)
+	if err != nil {
+		return nil, err
+	}
+	defer mediaRoot.Close()
+	name := filepath.Base(video)
+	before, err := mediaRoot.Lstat(name)
+	if err != nil || !before.Mode().IsRegular() || before.Size() != size || before.ModTime().UnixNano() != modTimeNS {
+		return nil, errors.New("cataloged media changed before embedded inspection")
+	}
+	file, err := mediaRoot.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	actual, err := file.Stat()
+	if err != nil || !actual.Mode().IsRegular() || !os.SameFile(before, actual) {
+		file.Close()
+		return nil, errors.New("cataloged media changed during embedded inspection opening")
+	}
+	return file, nil
+}
+
+func inspectEmbedded(ctx context.Context, ffmpeg, video string, input *os.File, streams []EmbeddedTrack, durationMS int64) []EmbeddedAudit {
 	out := []EmbeddedAudit{}
 	for _, s := range streams {
 		if !EnglishTrack(s.Language) {
@@ -63,8 +116,18 @@ func InspectEmbedded(ctx context.Context, ffmpeg, video string, streams []Embedd
 			out = append(out, result)
 			continue
 		}
+		if input != nil {
+			if _, err := input.Seek(0, io.SeekStart); err != nil {
+				result.Reason = "pinned media input cannot be rewound"
+				out = append(out, result)
+				continue
+			}
+		}
 		processCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		command := exec.CommandContext(processCtx, ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-i", video, "-map", "0:"+strconv.Itoa(s.Index), "-c:s", "srt", "-f", "srt", "pipe:1")
+		if input != nil {
+			command.Stdin = input
+		}
 		var buffer cappedBuffer
 		command.Stdout = &buffer
 		var stderr bytes.Buffer
