@@ -1,8 +1,8 @@
 package subtitles
 
 import (
-	"crypto/sha256"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -46,11 +45,11 @@ type PublishedReview struct {
 }
 
 type PublishedInstall struct {
-	DestinationName string `json:"destinationName"`
-	SHA256          string `json:"sha256"`
-	Bytes           int64  `json:"bytes"`
-	Source          string `json:"source"`
-	AlreadyInstalled bool `json:"alreadyInstalled"`
+	DestinationName  string `json:"destinationName"`
+	SHA256           string `json:"sha256"`
+	Bytes            int64  `json:"bytes"`
+	Source           string `json:"source"`
+	AlreadyInstalled bool   `json:"alreadyInstalled"`
 }
 
 var publishedStageIDRE = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -156,7 +155,7 @@ func openPublishedStageWithMediaInfo(stageRoot, partID, video string, durationMS
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		return empty, nil, Audit{}, errors.New("staged manifest invalid")
 	}
-	if manifest.Version != 1 || manifest.PartID != partID || manifest.Video != filepath.Clean(video) ||
+	if manifest.Version != 2 || manifest.PartID != partID || manifest.Video != filepath.Clean(video) ||
 		manifest.DurationMS != durationMS || manifest.VideoSize != videoInfo.Size() ||
 		manifest.VideoModTimeNano != videoInfo.ModTime().UnixNano() ||
 		manifest.Provider != "opensubtitles" || manifest.FileID <= 0 ||
@@ -353,30 +352,28 @@ func installPublishedRoot(mediaRoot *os.Root, stageRoot, partID, video string, d
 	return result, nil
 }
 
-// Bounded fingerprint detects ordinary same-size/mtime media replacement
-// without hashing multi-gigabyte videos on the NAS. It is NOT a full-content
-// identity proof: deliberate changes outside the sampled regions can evade it.
+// Manifest v2 uses a full-file fingerprint. The previous sample-based
+// fingerprint could not detect same-size/restored-mtime edits outside its
+// first, middle and last 64 KiB windows. This is deliberately more expensive
+// for large files, and still is NOT an exclusive-write lock or a snapshot.
 func fingerprintOpenedMedia(file *os.File, size int64) (string, error) {
 	if size <= 0 {
 		return "", errors.New("invalid reference media size")
 	}
-	const window int64 = 64 * 1024
+	before, err := file.Stat()
+	if err != nil || !before.Mode().IsRegular() || before.Size() != size {
+		return "", errors.New("reference media changed before hashing")
+	}
 	h := sha256.New()
-	_, _ = h.Write([]byte("mediaphile-media-samples-v1:" + strconv.FormatInt(size, 10)))
-	for _, offset := range []int64{0, size / 2, size - window} {
-		if offset < 0 {
-			offset = 0
-		}
-		length := window
-		if size-offset < length {
-			length = size - offset
-		}
-		chunk := make([]byte, int(length))
-		if _, err := file.ReadAt(chunk, offset); err != nil {
-			return "", err
-		}
-		_, _ = h.Write([]byte(":" + strconv.FormatInt(offset, 10) + ":"))
-		_, _ = h.Write(chunk)
+	_, _ = h.Write([]byte("mediaphile-media-full-sha256-v2:"))
+	n, err := io.Copy(h, io.NewSectionReader(file, 0, size))
+	if err != nil || n != size {
+		return "", errors.New("reference media changed while hashing")
+	}
+	after, err := file.Stat()
+	if err != nil || !os.SameFile(before, after) || before.Size() != after.Size() ||
+		!before.ModTime().Equal(after.ModTime()) {
+		return "", errors.New("reference media metadata changed while hashing")
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
