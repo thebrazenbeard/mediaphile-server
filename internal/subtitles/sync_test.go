@@ -32,6 +32,33 @@ func syncFixture(t *testing.T) (string, string, string) {
 	return video, input, staging
 }
 
+func TestStageOutsideMediaRejectsOverlappingRoots(t *testing.T) {
+	video, _, staging := syncFixture(t)
+	mediaDir := filepath.Dir(video)
+	ancestor := filepath.Dir(mediaDir)
+	insideMedia := filepath.Join(mediaDir, "private-stage")
+	if err := os.Mkdir(insideMedia, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		root string
+		wantErr bool
+	}{
+		{name: "ancestor-of-media", root: ancestor, wantErr: true},
+		{name: "media-directory", root: mediaDir, wantErr: true},
+		{name: "descendant-of-media", root: insideMedia, wantErr: true},
+		{name: "sibling-of-media", root: staging, wantErr: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := stageOutsideMedia(video, tc.root)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("stage root %q: rejected=%v, want rejected=%v", tc.root, err != nil, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestSyncStageUsesStrictExplicitOutputAndNeverModifiesSources(t *testing.T) {
 	video, input, staging := syncFixture(t)
 	before, err := os.ReadFile(input)

@@ -102,11 +102,18 @@ func stageOutsideMedia(video, root string) error {
 	if err != nil {
 		return err
 	}
-	relative, err := filepath.Rel(parent, cleanRoot)
+	mediaToStage, err := filepath.Rel(parent, cleanRoot)
 	if err != nil {
 		return err
 	}
-	if relative == "." || (!strings.HasPrefix(relative, ".."+string(os.PathSeparator)) && relative != "..") {
+	stageToMedia, err := filepath.Rel(cleanRoot, parent)
+	if err != nil {
+		return err
+	}
+	contained := func(relative string) bool {
+		return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)))
+	}
+	if contained(mediaToStage) || contained(stageToMedia) {
 		return errors.New("staging must be outside media directory")
 	}
 	return nil
