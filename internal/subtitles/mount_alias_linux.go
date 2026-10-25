@@ -78,7 +78,9 @@ func mountBacking(path string, mounts []mountIdentity) (mountIdentity, bool) {
 	var best mountIdentity
 	longest := -1
 	for _, mount := range mounts {
-		if !pathWithin(mount.point, path) || len(mount.point) <= longest {
+		// Equal mount points can be stacked. The later visible mount replaces
+		// the earlier identity; choosing the first can hide a bind alias.
+		if !pathWithin(mount.point, path) || len(mount.point) < longest {
 			continue
 		}
 		rel, err := filepath.Rel(mount.point, path)
