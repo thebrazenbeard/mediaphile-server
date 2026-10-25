@@ -21,6 +21,15 @@ func TestLinuxMountAliasMountInfoFailureIsClosed(t *testing.T) {
 	}
 }
 
+func TestLinuxMountAliasStackedMountUsesLastIdentity(t *testing.T) {
+	const info = "1 0 8:1 / / rw - ext4 /dev/sda1 rw\n" +
+		"2 1 8:1 /safe-stage /mnt/stage rw - ext4 /dev/sda1 rw\n" +
+		"3 2 8:1 /srv/media/Travelers /mnt/stage rw - ext4 /dev/sda1 rw\n"
+	if err := rejectMountAliasFromInfo("/srv/media", "/mnt/stage", info); err == nil {
+		t.Fatal("later bind mount hidden behind older mount at identical point")
+	}
+}
+
 func TestLinuxMountAliasRejectsNestedBindMountAndEscapes(t *testing.T) {
 	const info = "1 0 8:1 / / rw - ext4 /dev/sda1 rw\n" +
 		"5 1 8:1 /srv/media/TV\\040Shows/Travelers /stage\\040space rw - ext4 /dev/sda1 rw\n"
