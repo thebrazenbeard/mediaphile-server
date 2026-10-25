@@ -116,7 +116,7 @@ func librarySubtitleOverview(deps Dependencies) http.HandlerFunc {
 			}
 			offset = v
 		}
-		parts, err := deps.Catalog.ListPartsByLibrary(r.Context(), libraryID)
+		parts, err := deps.Catalog.ListAvailablePartsByLibrary(r.Context(), libraryID)
 		if err != nil {
 			writeError(w, 500, "CATALOG_ERROR", "cannot list media parts")
 			return
