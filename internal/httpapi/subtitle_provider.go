@@ -139,8 +139,18 @@ func publishedSubtitleStage(deps Dependencies) http.HandlerFunc {
 			writeError(w, 400, "INVALID_FILE_ID", "provider file ID is invalid")
 			return
 		}
-		staged, err := subtitles.StageOpenSubtitles(r.Context(), deps.SubtitleProviderClient, key, bearer,
-			input.FileID, partID, part.Path, root, source.DurationMS)
+		item, err := deps.Catalog.GetItem(r.Context(), source.ItemID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle media item unavailable")
+			return
+		}
+		library, err := deps.Catalog.GetLibrary(r.Context(), item.LibraryID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle library unavailable")
+			return
+		}
+		staged, err := subtitles.StageOpenSubtitlesInLibrary(r.Context(), deps.SubtitleProviderClient, key, bearer,
+			input.FileID, partID, library.RootPath, part.Path, root, part.Size, part.ModTimeNS, source.DurationMS)
 		if errors.Is(err, subtitles.ErrSubtitleProviderRateLimited) {
 			writeError(w, 429, "SUBTITLE_PROVIDER_RATE_LIMITED", "provider rate limit reached; try later")
 			return
@@ -179,7 +189,18 @@ func reviewedPublishedStage(deps Dependencies) http.HandlerFunc {
 			writeError(w, 503, "SUBTITLE_STAGE_NOT_CONFIGURED", "private staging root not configured")
 			return
 		}
-		review, err := subtitles.ReviewPublishedStage(root, partID, part.Path, source.DurationMS, stageID)
+		item, err := deps.Catalog.GetItem(r.Context(), source.ItemID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle media item unavailable")
+			return
+		}
+		library, err := deps.Catalog.GetLibrary(r.Context(), item.LibraryID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle library unavailable")
+			return
+		}
+		review, err := subtitles.ReviewPublishedStageInLibrary(library.RootPath, root, partID, part.Path,
+			part.Size, part.ModTimeNS, source.DurationMS, stageID)
 		if err != nil {
 			writeError(w, 409, "SUBTITLE_STAGE_REVIEW_BLOCKED", "staged subtitle is missing, changed, or not bound to this media part")
 			return
@@ -242,7 +263,18 @@ func manuallyInstallPublishedStage(deps Dependencies) http.HandlerFunc {
 			writeError(w, 503, "SUBTITLE_STAGE_NOT_CONFIGURED", "private staging root not configured")
 			return
 		}
-		installed, err := subtitles.InstallPublishedStage(root, partID, part.Path, source.DurationMS, stageID, input.ExpectedSHA256)
+		item, err := deps.Catalog.GetItem(r.Context(), source.ItemID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle media item unavailable")
+			return
+		}
+		library, err := deps.Catalog.GetLibrary(r.Context(), item.LibraryID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle library unavailable")
+			return
+		}
+		installed, err := subtitles.InstallPublishedStageInLibrary(library.RootPath, root, partID, part.Path,
+			part.Size, part.ModTimeNS, source.DurationMS, stageID, input.ExpectedSHA256)
 		if err != nil {
 			writeError(w, 409, "SUBTITLE_PUBLISH_BLOCKED", "staged subtitle changed, review failed, or destination is occupied")
 			return
