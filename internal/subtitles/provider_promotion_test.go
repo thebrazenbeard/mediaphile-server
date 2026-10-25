@@ -32,10 +32,10 @@ func promotionFixture(t *testing.T) (video, stageRoot, stageID, digest string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := publishedStageManifest{Version: 1, PartID: "part-1", Video: filepath.Clean(video),
+	manifest := publishedStageManifest{Version: 2, PartID: "part-1", Video: filepath.Clean(video),
 		VideoSize: mediaInfo.Size(), VideoModTimeNano: mediaInfo.ModTime().UnixNano(), DurationMS: 6000,
 		VideoFingerprint: fingerprint,
-		Provider: "opensubtitles", FileID: 123, SHA256: digest, CreatedAtUnix: time.Now().Unix()}
+		Provider:         "opensubtitles", FileID: 123, SHA256: digest, CreatedAtUnix: time.Now().Unix()}
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -129,9 +129,9 @@ func TestPublishedStageInLibraryRejectsSiblingStagingDirectory(t *testing.T) {
 
 func TestPublishedStagePublicationModePolicy(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		mode string
-		want os.FileMode
+		name    string
+		mode    string
+		want    os.FileMode
 		allowed bool
 	}{
 		{name: "group-readable", mode: "0640", want: 0640, allowed: true},
@@ -237,7 +237,10 @@ func TestPublishedStageNeverOverwritesDifferentSidecarOrChangedMedia(t *testing.
 func TestPublishedStageConcurrentManualInstallIsAtomicAndDuplicateSafe(t *testing.T) {
 	video, stage, stageID, digest := promotionFixture(t)
 	var wait sync.WaitGroup
-	type outcome struct { installed PublishedInstall; err error }
+	type outcome struct {
+		installed PublishedInstall
+		err       error
+	}
 	outcomes := make(chan outcome, 2)
 	for i := 0; i < 2; i++ {
 		wait.Add(1)
@@ -299,6 +302,82 @@ func TestPublishedStageRejectsSameSizeRestoredMtimeMediaReplacement(t *testing.T
 	if _, err := os.Stat(filepath.Join(filepath.Dir(video), "movie.en.srt")); !os.IsNotExist(err) {
 		t.Fatalf("published to changed media: %v", err)
 	}
+}
+
+// Off-window modifications used to evade the old first/middle/last 64 KiB
+// fingerprint while keeping the indexed size and mtime unchanged.
+func TestPublishedStageRejectsOffWindowInPlaceEditWithRestoredMtime(t *testing.T) {
+	video, stage := publishedStageFixture(t)
+	original := make([]byte, 1024*1024)
+	for i := range original {
+		original[i] = byte(i%251 + 1)
+	}
+	if err := os.WriteFile(video, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, stage, stageID, digest := promotionFixtureForVideo(t, video, stage)
+	before, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(video, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.WriteAt([]byte{0xff}, 256*1024); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chtimes(video, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	current, err := os.Stat(video)
+	if err != nil || current.Size() != before.Size() || !current.ModTime().Equal(before.ModTime()) {
+		t.Fatalf("test requires identical catalog metadata: %v", err)
+	}
+	if _, err := InstallPublishedStage(stage, "part-1", video, 6000, stageID, digest); err == nil {
+		t.Fatal("off-window in-place edit bypassed content identity")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(video), "movie.en.srt")); !os.IsNotExist(err) {
+		t.Fatalf("created sidecar for altered video: %v", err)
+	}
+}
+
+func promotionFixtureForVideo(t *testing.T, video, stage string) (string, string, string, string) {
+	t.Helper()
+	stageID := strings.Repeat("b", 32)
+	folder := filepath.Join(stage, "published-subtitle-"+stageID)
+	if err := os.Mkdir(folder, 0700); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte(validPublishedSRT)
+	sum := sha256.Sum256(payload)
+	digest := hex.EncodeToString(sum[:])
+	info, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := fingerprintMediaPath(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := publishedStageManifest{Version: 2, PartID: "part-1", Video: filepath.Clean(video),
+		VideoSize: info.Size(), VideoModTimeNano: info.ModTime().UnixNano(), DurationMS: 6000,
+		VideoFingerprint: fingerprint, Provider: "opensubtitles", FileID: 123, SHA256: digest,
+		CreatedAtUnix: time.Now().Unix()}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "manifest.json"), encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(folder, "candidate.en.srt"), payload, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return video, stage, stageID, digest
 }
 
 func TestPublishedStageLibraryRootRejectsReplacedSeriesAncestor(t *testing.T) {

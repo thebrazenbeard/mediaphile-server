@@ -249,6 +249,51 @@ func TestStageOpenSubtitlesInLibraryRejectsEqualMetadataReplacement(t *testing.T
 	}
 }
 
+func TestStageOpenSubtitlesRejectsOffWindowInPlaceEditDuringProvider(t *testing.T) {
+	video, stage := publishedStageFixture(t)
+	media := make([]byte, 1024*1024)
+	for i := range media {
+		media[i] = byte(i%251 + 1)
+	}
+	if err := os.WriteFile(video, media, 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	client := &http.Client{Transport: subtitleRoundTripper(func(*http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			f, err := os.OpenFile(video, os.O_WRONLY, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.WriteAt([]byte{0xff}, 256*1024); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(video, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			return publishedResponse(200, `{"link":"https://www.opensubtitles.com/download/signed/example.srt"}`), nil
+		}
+		return publishedResponse(200, validPublishedSRT), nil
+	})}
+	_, err = StageOpenSubtitlesInLibrary(context.Background(), client, "key", "token", 123,
+		"part-1", filepath.Dir(video), video, stage, info.Size(), info.ModTime().UnixNano(), 6000)
+	if err == nil || calls != 2 {
+		t.Fatalf("off-window in-place edit accepted: %v provider calls=%d", err, calls)
+	}
+	entries, err := os.ReadDir(stage)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("rejected stage left output: %v %v", entries, err)
+	}
+}
+
 func TestStageOpenSubtitlesRejectsUntrustedLinksBeforeGET(t *testing.T) {
 	for _, link := range []string{
 		"http://www.opensubtitles.com/download/unsafe",

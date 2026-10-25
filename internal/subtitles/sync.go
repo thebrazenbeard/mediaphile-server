@@ -123,7 +123,43 @@ func stageOutsideDirectory(mediaDir, root string) error {
 	if contained(mediaToStage) || contained(stageToMedia) {
 		return errors.New("staging must be outside media directory")
 	}
+	// String paths cannot identify volume aliases. Compare both opened roots
+	// with the other root's ancestors (Windows drive/UNC or Linux bind names).
+	for _, candidate := range parentPaths(cleanRoot) {
+		if sameDirectory(parent, candidate) {
+			return errors.New("staging and media roots alias the same directory")
+		}
+	}
+	for _, candidate := range parentPaths(parent) {
+		if sameDirectory(cleanRoot, candidate) {
+			return errors.New("staging and media roots alias the same directory")
+		}
+	}
+	if err := rejectMountAlias(parent, cleanRoot); err != nil {
+		return err
+	}
 	return nil
+}
+
+func parentPaths(path string) []string {
+	result := []string{}
+	for {
+		result = append(result, path)
+		parent := filepath.Dir(path)
+		if parent == path {
+			return result
+		}
+		path = parent
+	}
+}
+
+func sameDirectory(a, b string) bool {
+	aInfo, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bInfo, err := os.Stat(b)
+	return err == nil && os.SameFile(aInfo, bInfo)
 }
 
 // Revalidate an already-opened staging root against the configured library

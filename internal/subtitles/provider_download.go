@@ -52,6 +52,10 @@ func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer
 			if err != nil || current.Size() != info.Size() || !current.ModTime().Equal(info.ModTime()) {
 				return errors.New("reference media changed during staging")
 			}
+			currentFingerprint, err := fingerprintMediaPath(video)
+			if err != nil || currentFingerprint != fingerprint {
+				return errors.New("reference media content changed during staging")
+			}
 			return nil
 		})
 }
@@ -97,6 +101,20 @@ func StageOpenSubtitlesInLibrary(ctx context.Context, client *http.Client, apiKe
 			if err != nil || !current.Mode().IsRegular() || !os.SameFile(info, current) ||
 				current.Size() != expectedSize || current.ModTime().UnixNano() != expectedModTimeNS {
 				return errors.New("reference media changed during staging")
+			}
+			currentFile, err := mediaRoot.Open(name)
+			if err != nil {
+				return errors.New("reference media changed during staging")
+			}
+			openedInfo, statErr := currentFile.Stat()
+			if statErr != nil || !os.SameFile(current, openedInfo) {
+				currentFile.Close()
+				return errors.New("reference media changed during staging")
+			}
+			currentFingerprint, fpErr := fingerprintOpenedMedia(currentFile, openedInfo.Size())
+			closeErr := currentFile.Close()
+			if fpErr != nil || closeErr != nil || currentFingerprint != fingerprint {
+				return errors.New("reference media content changed during staging")
 			}
 			return nil
 		})
@@ -269,10 +287,10 @@ func stageOpenSubtitlesWithMedia(ctx context.Context, client *http.Client, apiKe
 		return PublishedStage{}, err
 	}
 	digest := sha256.Sum256(payload)
-	manifest := publishedStageManifest{Version: 1, PartID: partID, Video: filepath.Clean(video),
+	manifest := publishedStageManifest{Version: 2, PartID: partID, Video: filepath.Clean(video),
 		VideoSize: info.Size(), VideoModTimeNano: info.ModTime().UnixNano(), DurationMS: durationMS,
 		VideoFingerprint: videoFingerprint,
-		Provider: "opensubtitles", FileID: fileID, SHA256: hex.EncodeToString(digest[:]),
+		Provider:         "opensubtitles", FileID: fileID, SHA256: hex.EncodeToString(digest[:]),
 		CreatedAtUnix: time.Now().Unix()}
 	manifestBytes, err := json.Marshal(manifest)
 	if err != nil {
@@ -287,6 +305,12 @@ func stageOpenSubtitlesWithMedia(ctx context.Context, client *http.Client, apiKe
 	closeErr = manifestFile.Close()
 	if writeErr != nil || syncErr != nil || closeErr != nil || n != len(manifestBytes) {
 		return PublishedStage{}, errors.New("cannot finish subtitle stage manifest")
+	}
+	if err := revalidateMedia(); err != nil {
+		return PublishedStage{}, err
+	}
+	if err := verifyLibraryStageRoot(libraryRoot, stageRoot, openedRootInfo); err != nil {
+		return PublishedStage{}, errors.New("subtitle staging root relocated during write")
 	}
 	success = true
 	return PublishedStage{Provider: "opensubtitles", FileID: fileID, StageID: stageID, OutputSRT: output,
