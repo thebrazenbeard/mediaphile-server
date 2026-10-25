@@ -35,21 +35,94 @@ type PublishedStage struct {
 // request and the temporary file GET are separate; provider credentials are
 // sent only to the fixed API endpoint, never to the returned link.
 func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer string, fileID int64, partID, video, stageRoot string, durationMS int64) (PublishedStage, error) {
+	if err := validateStageRequest(ctx, apiKey, bearer, fileID, partID, video, stageRoot, durationMS); err != nil {
+		return PublishedStage{}, err
+	}
+	info, err := regularFile(video, 0)
+	if err != nil {
+		return PublishedStage{}, fmt.Errorf("reference media rejected: %w", err)
+	}
+	fingerprint, err := fingerprintMediaPath(video)
+	if err != nil {
+		return PublishedStage{}, errors.New("cannot fingerprint reference media")
+	}
+	return stageOpenSubtitlesWithMedia(ctx, client, apiKey, bearer, fileID, partID, video, stageRoot, durationMS,
+		"", info, fingerprint, func() error {
+			current, err := os.Stat(video)
+			if err != nil || current.Size() != info.Size() || !current.ModTime().Equal(info.ModTime()) {
+				return errors.New("reference media changed during staging")
+			}
+			return nil
+		})
+}
+
+// StageOpenSubtitlesInLibrary is the API-facing staging path. The media file
+// and its samples are opened relative to the configured library root, even if
+// a cataloged season directory has become an outside-library symlink.
+func StageOpenSubtitlesInLibrary(ctx context.Context, client *http.Client, apiKey, bearer string,
+	fileID int64, partID, libraryRoot, video, stageRoot string, expectedSize, expectedModTimeNS, durationMS int64) (PublishedStage, error) {
+	if err := validateStageRequest(ctx, apiKey, bearer, fileID, partID, video, stageRoot, durationMS); err != nil {
+		return PublishedStage{}, err
+	}
+	if err := stageOutsideDirectory(libraryRoot, stageRoot); err != nil {
+		return PublishedStage{}, errors.New("staging root is not outside the media library")
+	}
+	mediaRoot, err := openLibraryMediaRoot(libraryRoot, video, expectedSize, expectedModTimeNS)
+	if err != nil {
+		return PublishedStage{}, errors.New("reference media unavailable within library")
+	}
+	defer mediaRoot.Close()
+	name := filepath.Base(video)
+	info, err := mediaRoot.Lstat(name)
+	if err != nil || !info.Mode().IsRegular() {
+		return PublishedStage{}, errors.New("reference media unavailable within library")
+	}
+	f, err := mediaRoot.Open(name)
+	if err != nil {
+		return PublishedStage{}, errors.New("reference media unavailable within library")
+	}
+	opened, err := f.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		f.Close()
+		return PublishedStage{}, errors.New("reference media changed during opening")
+	}
+	fingerprint, fpErr := fingerprintOpenedMedia(f, opened.Size())
+	closeErr := f.Close()
+	if fpErr != nil || closeErr != nil {
+		return PublishedStage{}, errors.New("cannot fingerprint reference media")
+	}
+	return stageOpenSubtitlesWithMedia(ctx, client, apiKey, bearer, fileID, partID, video, stageRoot, durationMS,
+		libraryRoot, info, fingerprint, func() error {
+			current, err := mediaRoot.Lstat(name)
+			if err != nil || !current.Mode().IsRegular() || !os.SameFile(info, current) ||
+				current.Size() != expectedSize || current.ModTime().UnixNano() != expectedModTimeNS {
+				return errors.New("reference media changed during staging")
+			}
+			return nil
+		})
+}
+
+func validateStageRequest(ctx context.Context, apiKey, bearer string, fileID int64, partID, video, stageRoot string, durationMS int64) error {
 	if ctx == nil {
-		return PublishedStage{}, errors.New("missing context")
+		return errors.New("missing context")
 	}
 	if err := ctx.Err(); err != nil {
-		return PublishedStage{}, err
+		return err
 	}
 	if fileID <= 0 || fileID > 2147483647 || partID == "" || durationMS <= 0 ||
 		!filepath.IsAbs(video) || !filepath.IsAbs(stageRoot) ||
 		len(apiKey) == 0 || len(apiKey) > 256 || strings.ContainsAny(apiKey, "\r\n") ||
 		len(bearer) == 0 || len(bearer) > 4096 || strings.ContainsAny(bearer, "\r\n") {
-		return PublishedStage{}, errors.New("invalid subtitle download configuration")
+		return errors.New("invalid subtitle download configuration")
 	}
-	info, err := regularFile(video, 0)
-	if err != nil {
-		return PublishedStage{}, fmt.Errorf("reference media rejected: %w", err)
+	return nil
+}
+
+func stageOpenSubtitlesWithMedia(ctx context.Context, client *http.Client, apiKey, bearer string,
+	fileID int64, partID, video, stageRoot string, durationMS int64, libraryRoot string, info os.FileInfo,
+	videoFingerprint string, revalidateMedia func() error) (PublishedStage, error) {
+	if info == nil || !info.Mode().IsRegular() || info.Size() < 1 || revalidateMedia == nil {
+		return PublishedStage{}, errors.New("reference media unavailable")
 	}
 	rootInfo, err := os.Lstat(stageRoot)
 	if err != nil {
@@ -61,10 +134,6 @@ func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer
 	if err := stageOutsideMedia(video, stageRoot); err != nil {
 		return PublishedStage{}, err
 	}
-	videoFingerprint, err := fingerprintMediaPath(video)
-	if err != nil {
-		return PublishedStage{}, errors.New("cannot fingerprint reference media")
-	}
 	// Pin the validated directory *before* network I/O. A writable ancestor
 	// cannot redirect a later stage write to a different root during download.
 	stageDir, err := os.OpenRoot(stageRoot)
@@ -75,6 +144,9 @@ func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer
 	openedRootInfo, err := stageDir.Stat(".")
 	if err != nil || !os.SameFile(rootInfo, openedRootInfo) {
 		return PublishedStage{}, errors.New("subtitle staging root changed")
+	}
+	if err := verifyLibraryStageRoot(libraryRoot, stageRoot, openedRootInfo); err != nil {
+		return PublishedStage{}, errors.New("subtitle staging root is not isolated from media library")
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -148,9 +220,11 @@ func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer
 	if err := runCtx.Err(); err != nil {
 		return PublishedStage{}, err
 	}
-	current, err := os.Stat(video)
-	if err != nil || current.Size() != info.Size() || !current.ModTime().Equal(info.ModTime()) {
-		return PublishedStage{}, errors.New("reference media changed during staging")
+	if err := revalidateMedia(); err != nil {
+		return PublishedStage{}, err
+	}
+	if err := verifyLibraryStageRoot(libraryRoot, stageRoot, openedRootInfo); err != nil {
+		return PublishedStage{}, errors.New("subtitle staging root changed or is not isolated")
 	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {

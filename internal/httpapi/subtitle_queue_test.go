@@ -119,8 +119,13 @@ func TestSubtitleQueueOffsetPagesRemainDistinctAndReadOnly(t *testing.T) {
 	if err := os.WriteFile(other, []byte("movie2"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	otherInfo, err := os.Stat(other)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := deps.Catalog.UpsertMediaPart(context.Background(), catalog.MediaPart{
-		ID: "part2", SourceID: "source", Path: other, Size: 6, Available: true,
+		ID: "part2", SourceID: "source", Path: other,
+		Size: otherInfo.Size(), ModTimeNS: otherInfo.ModTime().UnixNano(), Available: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
