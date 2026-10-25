@@ -13,6 +13,7 @@ var (
 	moviePattern             = regexp.MustCompile(`^(.+?)\s*\((\d{4})\)(?:\s.*)?$`)
 	episodePattern           = regexp.MustCompile(`(?i)^(.+?)\s*[-._ ]*S(\d{1,2})E(\d{1,2})(?:\s*[-._ ]+(.*))?$`)
 	bareEpisodePattern       = regexp.MustCompile(`(?i)^S(\d{1,2})E(\d{1,2})(?:\s*[-._ ]+(.*))?$`)
+	yearQualifiedShowPattern = regexp.MustCompile(`^(.+?)\s*\((\d{4})\)$`)
 	seasonFolderPattern      = regexp.MustCompile(`(?i)^Season\s*(\d{1,2})$`)
 	namedSeasonFolderPattern = regexp.MustCompile(`(?i)^(.+?)\s*[-._ ]+Season\s*(\d{1,2})$`)
 )
@@ -54,6 +55,7 @@ func Parse(relativePath string, mediaType catalog.LibraryType) Candidate {
 				title = "Episode " + strconv.Itoa(episode)
 			}
 			if err1 == nil && err2 == nil && show != "" {
+				show = canonicalYearQualifiedShow(relativePath, season, show)
 				return Candidate{Resolved: true, Kind: catalog.ItemEpisode, Title: title, ShowTitle: show, Season: season, Episode: episode}
 			}
 		}
@@ -75,6 +77,18 @@ func Parse(relativePath string, mediaType catalog.LibraryType) Candidate {
 	default:
 		return Candidate{Title: cleanTitle(base), Reason: "unsupported library type"}
 	}
+}
+
+// A year-qualified show folder distinguishes remakes. A filename can omit the
+// year while still referring to that same show, so prefer its canonical folder
+// title only when the supplied prefix agrees with the base title.
+func canonicalYearQualifiedShow(relativePath string, season int, filenameShow string) string {
+	folderShow := showFromEpisodeDirectory(relativePath, season)
+	m := yearQualifiedShowPattern.FindStringSubmatch(folderShow)
+	if len(m) == 3 && strings.EqualFold(cleanTitle(m[1]), filenameShow) {
+		return folderShow
+	}
+	return filenameShow
 }
 
 func showFromEpisodeDirectory(relativePath string, season int) string {

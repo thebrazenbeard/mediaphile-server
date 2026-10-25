@@ -40,6 +40,25 @@ func TestParseHistoricalBasenameOnlyEpisodes(t *testing.T) {
 	}
 }
 
+func TestYearQualifiedFolderUsesSameShowIdentityForBareAndPrefixedEpisodes(t *testing.T) {
+	for _, path := range []string{
+		"Wings (1990)/Season 01/S01E01 - Pilot.mkv",
+		"Wings (1990)/Season 02/Wings - S02E01 - The Return.mkv",
+		"Wings (1990)/Wings - S03E01 - Back Again.mkv",
+	} {
+		got := Parse(path, catalog.LibraryTV)
+		if !got.Resolved || got.ShowTitle != "Wings (1990)" {
+			t.Fatalf("%q resolved to unexpected show: %#v", path, got)
+		}
+	}
+
+	// A release labeled for another series must not be silently reassigned.
+	got := Parse("Wings (1990)/Season 01/Other Series - S01E01.mkv", catalog.LibraryTV)
+	if got.ShowTitle == "Wings (1990)" {
+		t.Fatalf("mismatched prefixed show was overwritten: %#v", got)
+	}
+}
+
 func TestBasenameOnlyEpisodeWithoutUnambiguousShowStaysUnresolved(t *testing.T) {
 	for _, path := range []string{
 		"S01E01 - Pilot.mkv",
