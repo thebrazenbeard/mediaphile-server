@@ -109,6 +109,28 @@ func TestDiscoverRefusesBadCandidates(t *testing.T) {
 	}
 }
 
+func TestDiscoverRefusesSymlinkedSubtitleInbox(t *testing.T) {
+	for _, inbox := range []string{"Subtitles", "Subs"} {
+		t.Run(inbox, func(t *testing.T) {
+			mediaDir := t.TempDir()
+			outsideDir := t.TempDir()
+			video := filepath.Join(mediaDir, "Example.mkv")
+			if err := os.WriteFile(video, []byte("media"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(outsideDir, "Example.en.srt"), []byte(cleanSRT), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outsideDir, filepath.Join(mediaDir, inbox)); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			if _, err := Discover(video, 10000, false); err == nil {
+				t.Fatal("accepted subtitle inbox symlink escaping the media directory")
+			}
+		})
+	}
+}
+
 func TestAuditFindsLowercaseLPronouns(t *testing.T) {
 	payload := []byte(strings.ReplaceAll(cleanSRT, "I love you.", "l'm ready. lt is time."))
 	audit, err := AuditSRT(payload, 10000)
