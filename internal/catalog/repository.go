@@ -260,14 +260,30 @@ func (r *Repository) FindMediaPartByPath(ctx context.Context, path string) (Medi
 	return v, nil
 }
 
+// ListPartsByLibrary includes unavailable history. The scanner relies on
+// finding retired parts after a scan, so callers must not silently filter it.
 func (r *Repository) ListPartsByLibrary(ctx context.Context, libraryID string) ([]MediaPart, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	return r.listPartsByLibrary(ctx, libraryID, false)
+}
+
+// ListAvailablePartsByLibrary is the subtitle planner's pagination domain.
+// Neither an unavailable part nor its unavailable source consumes a page slot.
+func (r *Repository) ListAvailablePartsByLibrary(ctx context.Context, libraryID string) ([]MediaPart, error) {
+	return r.listPartsByLibrary(ctx, libraryID, true)
+}
+
+func (r *Repository) listPartsByLibrary(ctx context.Context, libraryID string, availableOnly bool) ([]MediaPart, error) {
+	query := `
 SELECT p.id,p.source_id,p.path,p.size,p.mod_time_ns,p.available
 FROM media_parts p
 JOIN media_sources s ON s.id=p.source_id
 JOIN items i ON i.id=s.item_id
-WHERE i.library_id=?
-ORDER BY p.path`, libraryID)
+WHERE i.library_id=?`
+	if availableOnly {
+		query += " AND p.available=1 AND s.available=1"
+	}
+	query += " ORDER BY p.path"
+	rows, err := r.db.QueryContext(ctx, query, libraryID)
 	if err != nil {
 		return nil, err
 	}

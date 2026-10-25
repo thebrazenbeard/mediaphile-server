@@ -88,7 +88,7 @@ func librarySubtitleQueue(deps Dependencies, refresh bool) http.HandlerFunc {
 				writeError(w, 400, "INVALID_PAGINATION", "limit must be 1-50 and offset must be nonnegative")
 				return
 			}
-			parts, err := deps.Catalog.ListPartsByLibrary(r.Context(), libraryID)
+			parts, err := deps.Catalog.ListAvailablePartsByLibrary(r.Context(), libraryID)
 			if err != nil {
 				writeError(w, 500, "CATALOG_ERROR", "cannot list media parts")
 				return
