@@ -61,7 +61,7 @@ func TestStageOpenSubtitlesExplicitTwoStepAndNoMediaWrite(t *testing.T) {
 			return nil, nil
 		}
 	})}
-	result, err := StageOpenSubtitles(context.Background(), client, "test-key", "test-token", 123, video, stage, 6000)
+	result, err := StageOpenSubtitles(context.Background(), client, "test-key", "test-token", 123, "part-1", video, stage, 6000)
 	if err != nil || calls != 2 {
 		t.Fatalf("stage failed: result=%+v err=%v calls=%d", result, err, calls)
 	}
@@ -94,7 +94,7 @@ func TestStageOpenSubtitlesRejectsUntrustedLinksBeforeGET(t *testing.T) {
 				calls++
 				return publishedResponse(200, `{"link":`+strconvQuote(link)+`,"file_name":"test.srt"}`), nil
 			})}
-			_, err := StageOpenSubtitles(context.Background(), client, "key", "token", 4, video, stage, 6000)
+			_, err := StageOpenSubtitles(context.Background(), client, "key", "token", 4, "part-1", video, stage, 6000)
 			if err == nil || calls != 1 {
 				t.Fatalf("untrusted link accepted: %v calls=%d", err, calls)
 			}
@@ -133,7 +133,7 @@ func TestStageOpenSubtitlesRejectsBadPayloadAndQuota(t *testing.T) {
 				}
 				return publishedResponse(tc.status, tc.body), nil
 			})}
-			_, err := StageOpenSubtitles(context.Background(), client, "private-key", "private-token", 123, video, stage, 6000)
+			_, err := StageOpenSubtitles(context.Background(), client, "private-key", "private-token", 123, "part-1", video, stage, 6000)
 			if err == nil || strings.Contains(err.Error(), "private-key") || strings.Contains(err.Error(), "private-token") {
 				t.Fatalf("wrong error: %v", err)
 			}
@@ -166,13 +166,13 @@ func TestStageOpenSubtitlesInvalidInputNeverContactsProvider(t *testing.T) {
 		{"key", "token", 5, filepath.Dir(video)},
 		{"key", "token", 5, "relative-stage"},
 	} {
-		if _, err := StageOpenSubtitles(context.Background(), client, tc.key, tc.bearer, tc.id, video, tc.root, 6000); err == nil {
+		if _, err := StageOpenSubtitles(context.Background(), client, tc.key, tc.bearer, tc.id, "part-1", video, tc.root, 6000); err == nil {
 			t.Fatalf("accepted invalid input: %+v", tc)
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := StageOpenSubtitles(ctx, client, "key", "token", 5, video, stage, 6000); err == nil || calls != 0 {
+	if _, err := StageOpenSubtitles(ctx, client, "key", "token", 5, "part-1", video, stage, 6000); err == nil || calls != 0 {
 		t.Fatalf("canceled work reached provider: %v %d", err, calls)
 	}
 }
@@ -193,7 +193,7 @@ func TestStageOpenSubtitlesRejectsRedirectsAndTransportSecrets(t *testing.T) {
 			}
 			return publishedResponse(200, `{"link":"https://www.opensubtitles.com/download/signed/subfile/test.srt"}`), nil
 		})}
-		_, err := StageOpenSubtitles(context.Background(), client, "secret-key", "secret-token", 123, video, stage, 6000)
+		_, err := StageOpenSubtitles(context.Background(), client, "secret-key", "secret-token", 123, "part-1", video, stage, 6000)
 		if err == nil || strings.Contains(err.Error(), "secret-key") || strings.Contains(err.Error(), "secret-token") {
 			t.Fatalf("redirect or transport secret escaped: %v", err)
 		}

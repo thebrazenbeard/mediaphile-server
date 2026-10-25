@@ -20,6 +20,13 @@ func principalFromRequest(r *http.Request) (catalog.Principal, bool) {
 
 func requirePrincipal(deps Dependencies, admin bool, next http.Handler) http.Handler {
 	if deps.Auth == nil {
+		// Administrative operations must never become anonymous when a
+		// caller composes the router without an authentication service.
+		if admin {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				writeError(w, http.StatusServiceUnavailable, "AUTH_UNAVAILABLE", "authentication service is unavailable")
+			})
+		}
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

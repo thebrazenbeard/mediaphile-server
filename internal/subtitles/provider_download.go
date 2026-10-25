@@ -3,6 +3,7 @@ package subtitles
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -22,7 +23,8 @@ import (
 type PublishedStage struct {
 	Provider       string `json:"provider"`
 	FileID         int64  `json:"fileId"`
-	OutputSRT      string `json:"outputSrt"`
+	StageID        string `json:"stageId"`
+	OutputSRT      string `json:"-"`
 	SHA256         string `json:"sha256"`
 	Audit          Audit  `json:"audit"`
 	ReadyForReview bool   `json:"readyForReview"`
@@ -32,14 +34,14 @@ type PublishedStage struct {
 // staging directory. It never publishes to the media directory. The API-token
 // request and the temporary file GET are separate; provider credentials are
 // sent only to the fixed API endpoint, never to the returned link.
-func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer string, fileID int64, video, stageRoot string, durationMS int64) (PublishedStage, error) {
+func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer string, fileID int64, partID, video, stageRoot string, durationMS int64) (PublishedStage, error) {
 	if ctx == nil {
 		return PublishedStage{}, errors.New("missing context")
 	}
 	if err := ctx.Err(); err != nil {
 		return PublishedStage{}, err
 	}
-	if fileID <= 0 || fileID > 2147483647 || durationMS <= 0 ||
+	if fileID <= 0 || fileID > 2147483647 || partID == "" || durationMS <= 0 ||
 		!filepath.IsAbs(video) || !filepath.IsAbs(stageRoot) ||
 		len(apiKey) == 0 || len(apiKey) > 256 || strings.ContainsAny(apiKey, "\r\n") ||
 		len(bearer) == 0 || len(bearer) > 4096 || strings.ContainsAny(bearer, "\r\n") {
@@ -58,6 +60,21 @@ func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer
 	}
 	if err := stageOutsideMedia(video, stageRoot); err != nil {
 		return PublishedStage{}, err
+	}
+	videoFingerprint, err := fingerprintMediaPath(video)
+	if err != nil {
+		return PublishedStage{}, errors.New("cannot fingerprint reference media")
+	}
+	// Pin the validated directory *before* network I/O. A writable ancestor
+	// cannot redirect a later stage write to a different root during download.
+	stageDir, err := os.OpenRoot(stageRoot)
+	if err != nil {
+		return PublishedStage{}, errors.New("cannot open private subtitle staging directory")
+	}
+	defer stageDir.Close()
+	openedRootInfo, err := stageDir.Stat(".")
+	if err != nil || !os.SameFile(rootInfo, openedRootInfo) {
+		return PublishedStage{}, errors.New("subtitle staging root changed")
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -135,32 +152,70 @@ func StageOpenSubtitles(ctx context.Context, client *http.Client, apiKey, bearer
 	if err != nil || current.Size() != info.Size() || !current.ModTime().Equal(info.ModTime()) {
 		return PublishedStage{}, errors.New("reference media changed during staging")
 	}
-	work, err := os.MkdirTemp(stageRoot, "published-subtitle-")
-	if err != nil {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return PublishedStage{}, errors.New("cannot create staging identifier")
+	}
+	stageID := hex.EncodeToString(nonce[:])
+	workName := "published-subtitle-" + stageID
+	if err := stageDir.Mkdir(workName, 0700); err != nil {
 		return PublishedStage{}, errors.New("cannot create subtitle staging directory")
+	}
+	workInfo, err := stageDir.Lstat(workName)
+	if err != nil || !workInfo.IsDir() || workInfo.Mode()&os.ModeSymlink != 0 {
+		return PublishedStage{}, errors.New("subtitle stage directory replaced")
 	}
 	success := false
 	defer func() {
 		if !success {
-			_ = os.RemoveAll(work)
+			_ = stageDir.RemoveAll(workName)
 		}
 	}()
-	output := filepath.Join(work, "candidate.en.srt")
-	f, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	workRoot, err := stageDir.OpenRoot(workName)
+	if err != nil {
+		return PublishedStage{}, errors.New("cannot open isolated staging directory")
+	}
+	defer workRoot.Close()
+	openedWorkInfo, err := workRoot.Stat(".")
+	if err != nil || !os.SameFile(workInfo, openedWorkInfo) {
+		return PublishedStage{}, errors.New("subtitle stage directory changed")
+	}
+	output := filepath.Join(stageRoot, workName, "candidate.en.srt")
+	f, err := workRoot.OpenFile("candidate.en.srt", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return PublishedStage{}, errors.New("cannot create staged subtitle")
 	}
-	_, writeErr := f.Write(payload)
+	n, writeErr := f.Write(payload)
+	syncErr := f.Sync()
 	closeErr := f.Close()
-	if writeErr != nil || closeErr != nil {
+	if writeErr != nil || syncErr != nil || closeErr != nil || n != len(payload) {
 		return PublishedStage{}, errors.New("cannot finish staged subtitle")
 	}
 	if err := runCtx.Err(); err != nil {
 		return PublishedStage{}, err
 	}
 	digest := sha256.Sum256(payload)
+	manifest := publishedStageManifest{Version: 1, PartID: partID, Video: filepath.Clean(video),
+		VideoSize: info.Size(), VideoModTimeNano: info.ModTime().UnixNano(), DurationMS: durationMS,
+		VideoFingerprint: videoFingerprint,
+		Provider: "opensubtitles", FileID: fileID, SHA256: hex.EncodeToString(digest[:]),
+		CreatedAtUnix: time.Now().Unix()}
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		return PublishedStage{}, errors.New("cannot encode subtitle stage manifest")
+	}
+	manifestFile, err := workRoot.OpenFile("manifest.json", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return PublishedStage{}, errors.New("cannot create subtitle stage manifest")
+	}
+	n, writeErr = manifestFile.Write(manifestBytes)
+	syncErr = manifestFile.Sync()
+	closeErr = manifestFile.Close()
+	if writeErr != nil || syncErr != nil || closeErr != nil || n != len(manifestBytes) {
+		return PublishedStage{}, errors.New("cannot finish subtitle stage manifest")
+	}
 	success = true
-	return PublishedStage{Provider: "opensubtitles", FileID: fileID, OutputSRT: output,
+	return PublishedStage{Provider: "opensubtitles", FileID: fileID, StageID: stageID, OutputSRT: output,
 		SHA256: hex.EncodeToString(digest[:]), Audit: report, ReadyForReview: true}, nil
 }
 
