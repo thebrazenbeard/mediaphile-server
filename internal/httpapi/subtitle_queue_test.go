@@ -211,6 +211,20 @@ func TestSubtitleQueueRefreshPaginatesAvailablePartsOnly(t *testing.T) {
 	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].PartID != "part" {
 		t.Fatalf("unavailable part consumed overview page: %+v", page)
 	}
+	// An available part is also ineligible when its parent media source is
+	// retired. Test both flags independently to protect the catalog query.
+	source, err := deps.Catalog.GetMediaSource(context.Background(), "source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.Available = false
+	if err := deps.Catalog.UpsertMediaSource(context.Background(), source); err != nil {
+		t.Fatal(err)
+	}
+	available, err = deps.Catalog.ListAvailablePartsByLibrary(context.Background(), "lib")
+	if err != nil || len(available) != 0 {
+		t.Fatalf("retired media source remains in subtitle planner: %+v, %v", available, err)
+	}
 }
 
 func TestSubtitlePolicyBlocksManualCandidateInstallUntilRestored(t *testing.T) {
