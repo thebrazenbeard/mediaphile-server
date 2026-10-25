@@ -97,6 +97,36 @@ func TestPublishedStageRequiresBoundIdentityAndManualInstall(t *testing.T) {
 	}
 }
 
+func TestPublishedStageInLibraryRejectsSiblingStagingDirectory(t *testing.T) {
+	video, stage, stageID, digest := promotionFixture(t)
+	info, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both paths are under the cataloged root, but the staging directory is
+	// not under this video's immediate parent. The old parent-only check let
+	// the stage be read and published into the library.
+	library := filepath.Dir(filepath.Dir(video))
+	if _, err := ReviewPublishedStageInLibrary(library, stage, "part-1", video,
+		info.Size(), info.ModTime().UnixNano(), 6000, stageID); err == nil {
+		t.Fatal("inside-library staged text was disclosed")
+	}
+	if _, err := InstallPublishedStageInLibrary(library, stage, "part-1", video,
+		info.Size(), info.ModTime().UnixNano(), 6000, stageID, digest); err == nil {
+		t.Fatal("inside-library staged candidate was published")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(video), "movie.en.srt")); !os.IsNotExist(err) {
+		t.Fatalf("rejected stage affected media: %v", err)
+	}
+	// The legitimate configuration with staging outside the library remains
+	// reviewable without installing anything.
+	validLibrary := filepath.Dir(video)
+	if review, err := ReviewPublishedStageInLibrary(validLibrary, stage, "part-1", video,
+		info.Size(), info.ModTime().UnixNano(), 6000, stageID); err != nil || review.SHA256 != digest {
+		t.Fatalf("outside-library stage unexpectedly rejected: %+v %v", review, err)
+	}
+}
+
 func TestPublishedStagePublicationModePolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -268,5 +298,93 @@ func TestPublishedStageRejectsSameSizeRestoredMtimeMediaReplacement(t *testing.T
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(video), "movie.en.srt")); !os.IsNotExist(err) {
 		t.Fatalf("published to changed media: %v", err)
+	}
+}
+
+func TestPublishedStageLibraryRootRejectsReplacedSeriesAncestor(t *testing.T) {
+	t.Setenv("MEDIAPHILE_SUBTITLE_PUBLISH_MODE", "")
+	video, stage, stageID, digest := promotionFixture(t)
+	libraryRoot := filepath.Dir(video)
+	series := filepath.Join(libraryRoot, "Travelers")
+	if err := os.Mkdir(series, 0700); err != nil {
+		t.Fatal(err)
+	}
+	season := filepath.Join(series, "Season 01")
+	if err := os.Mkdir(season, 0700); err != nil {
+		t.Fatal(err)
+	}
+	nestedVideo := filepath.Join(season, filepath.Base(video))
+	if err := os.Rename(video, nestedVideo); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(stage, "published-subtitle-"+stageID, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest publishedStageManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Video = filepath.Clean(nestedVideo)
+	data, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(nestedVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review := func() (PublishedReview, error) {
+		return ReviewPublishedStageInLibrary(libraryRoot, stage, "part-1", nestedVideo,
+			info.Size(), info.ModTime().UnixNano(), 6000, stageID)
+	}
+	install := func() (PublishedInstall, error) {
+		return InstallPublishedStageInLibrary(libraryRoot, stage, "part-1", nestedVideo,
+			info.Size(), info.ModTime().UnixNano(), 6000, stageID, digest)
+	}
+	if got, err := review(); err != nil || got.SHA256 != digest {
+		t.Fatalf("in-root stage review: %+v %v", got, err)
+	}
+	if got, err := install(); err != nil || got.AlreadyInstalled {
+		t.Fatalf("in-root atomic publish: %+v %v", got, err)
+	}
+
+	// Replace an ancestor ABOVE the immediate Season 01 media parent.
+	// The immediate parent remains a real directory, so an Lstat of only
+	// filepath.Dir(video) is insufficient to detect the escape.
+	outside := t.TempDir()
+	outsideSeason := filepath.Join(outside, "Season 01")
+	if err := os.Mkdir(outsideSeason, 0700); err != nil {
+		t.Fatal(err)
+	}
+	videoBytes, err := os.ReadFile(nestedVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outsideVideo := filepath.Join(outsideSeason, filepath.Base(video))
+	if err := os.WriteFile(outsideVideo, videoBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(outsideVideo, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(series, series+".original"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, series); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := review(); err == nil {
+		t.Fatal("previewed staged subtitle through outside-library ancestor")
+	}
+	if _, err := install(); err == nil {
+		t.Fatal("published staged subtitle through outside-library ancestor")
+	}
+	if _, err := os.Stat(filepath.Join(outsideSeason, "movie.en.srt")); !os.IsNotExist(err) {
+		t.Fatalf("outside-library staged sidecar exists: %v", err)
 	}
 }
