@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +51,51 @@ func languageFor(name, stem string) string {
 	}
 }
 
+// readRegularSRT opens a leaf relative to an already confined directory.
+// Recheck identity after opening so a changed entry cannot redirect reads.
+func readRegularSRT(root *os.Root, name string) ([]byte, error) {
+	before, err := root.Lstat(name)
+	if err != nil || !before.Mode().IsRegular() || before.Size() < 1 || before.Size() > maxSRTBytes {
+		return nil, errors.New("subtitle candidate is not a bounded regular file")
+	}
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	opened, err := f.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(before, opened) {
+		return nil, errors.New("subtitle candidate changed during opening")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxSRTBytes+1))
+	if err != nil || len(data) == 0 || len(data) > maxSRTBytes || int64(len(data)) != before.Size() {
+		return nil, errors.New("subtitle candidate changed during reading")
+	}
+	return data, nil
+}
+
+func openSubtitleInbox(mediaDir, name string) (*os.Root, error) {
+	mediaRoot, err := os.OpenRoot(mediaDir)
+	if err != nil {
+		return nil, err
+	}
+	defer mediaRoot.Close()
+	before, err := mediaRoot.Lstat(name)
+	if err != nil || !before.IsDir() || before.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("subtitle inbox must be a real directory inside the media folder")
+	}
+	inbox, err := mediaRoot.OpenRoot(name)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := inbox.Stat(".")
+	if err != nil || !os.SameFile(before, opened) {
+		inbox.Close()
+		return nil, errors.New("subtitle inbox changed during opening")
+	}
+	return inbox, nil
+}
+
 // Discover searches adjacent SRT files and a strictly bounded Subtitles/Subs inbox.
 // Unlabeled and foreign-language subtitles are never considered verified English.
 func Discover(video string, durationMS int64, embeddedEnglish bool) (Review, error) {
@@ -68,11 +114,32 @@ func Discover(video string, durationMS int64, embeddedEnglish bool) (Review, err
 		report.Coverage = "embedded_english"
 	}
 	for _, folder := range []string{dir, filepath.Join(dir, "Subtitles"), filepath.Join(dir, "Subs")} {
-		names, err := os.ReadDir(folder)
+		name := "."
+		if folder != dir {
+			name = filepath.Base(folder)
+		}
+		if _, err := os.Lstat(folder); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return Review{}, err
+		}
+		inbox, err := openSubtitleInbox(dir, name)
+		if err != nil {
+			return Review{}, err
+		}
+		directory, err := inbox.Open(".")
+		if err != nil {
+			inbox.Close()
+			return Review{}, err
+		}
+		names, err := directory.ReadDir(-1)
+		directory.Close()
 		if os.IsNotExist(err) {
+			inbox.Close()
 			continue
 		}
 		if err != nil {
+			inbox.Close()
 			return Review{}, err
 		}
 		for _, entry := range names {
@@ -86,9 +153,9 @@ func Discover(video string, durationMS int64, embeddedEnglish bool) (Review, err
 			if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() {
 				continue
 			}
-			path := filepath.Join(folder, entry.Name())
-			stat, err := entry.Info()
+			stat, err := inbox.Lstat(entry.Name())
 			if err != nil {
+				inbox.Close()
 				return Review{}, err
 			}
 			if stat.Size() > maxSRTBytes || stat.Size() == 0 {
@@ -99,7 +166,7 @@ func Discover(video string, durationMS int64, embeddedEnglish bool) (Review, err
 				row := SidecarAudit{Name: entry.Name(), Language: language, Status: "unverified"}
 				if language == "en" {
 					report.Coverage = "external_english"
-					data, readErr := os.ReadFile(path)
+					data, readErr := readRegularSRT(inbox, entry.Name())
 					if readErr != nil {
 						row.Reason = "could not read existing subtitle"
 					} else if audit, auditErr := AuditSRT(data, durationMS); auditErr == nil {
@@ -117,19 +184,21 @@ func Discover(video string, durationMS int64, embeddedEnglish bool) (Review, err
 			if language != "en" {
 				continue
 			}
-			bytes, err := os.ReadFile(path)
+			bytes, err := readRegularSRT(inbox, entry.Name())
 			if err != nil {
+				inbox.Close()
 				return Review{}, err
 			}
 			audit, err := AuditSRT(bytes, durationMS)
 			if err != nil {
 				continue
 			}
-			sum := sha256.Sum256([]byte(filepath.Clean(path)))
+			sum := sha256.Sum256([]byte(filepath.Join(folder, entry.Name())))
 			report.Candidates = append(report.Candidates, Candidate{
 				ID: hex.EncodeToString(sum[:16]), Name: entry.Name(), Language: "en", Bytes: stat.Size(), Audit: audit,
 			})
 		}
+		inbox.Close()
 	}
 	return report, nil
 }
@@ -174,14 +243,12 @@ func Install(video string, durationMS int64, candidateID string) (Installed, err
 	if source == "" {
 		return Installed{}, errors.New("candidate path rejected")
 	}
-	info, err := os.Lstat(source)
+	inbox, err := openSubtitleInbox(filepath.Dir(video), filepath.Base(filepath.Dir(source)))
 	if err != nil {
 		return Installed{}, err
 	}
-	if !info.Mode().IsRegular() || info.Size() != candidate.Bytes {
-		return Installed{}, errors.New("candidate changed")
-	}
-	payload, err := os.ReadFile(source)
+	payload, err := readRegularSRT(inbox, candidate.Name)
+	inbox.Close()
 	if err != nil {
 		return Installed{}, err
 	}
@@ -191,7 +258,12 @@ func Install(video string, durationMS int64, candidateID string) (Installed, err
 		return Installed{}, errors.New("candidate changed before installation")
 	}
 	destination := strings.TrimSuffix(video, filepath.Ext(video)) + ".en.srt"
-	out, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	mediaRoot, err := os.OpenRoot(filepath.Dir(video))
+	if err != nil {
+		return Installed{}, err
+	}
+	defer mediaRoot.Close()
+	out, err := mediaRoot.OpenFile(filepath.Base(destination), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return Installed{}, err
 	}
@@ -203,9 +275,14 @@ func Install(video string, durationMS int64, candidateID string) (Installed, err
 	if closeErr != nil || n != len(payload) {
 		return Installed{}, errors.New("new sidecar write incomplete; inspect exclusive-created destination")
 	}
-	readback, err := os.ReadFile(destination)
+	readbackFile, err := mediaRoot.Open(filepath.Base(destination))
 	if err != nil {
 		return Installed{}, err
+	}
+	readback, err := io.ReadAll(io.LimitReader(readbackFile, maxSRTBytes+1))
+	readbackFile.Close()
+	if err != nil || len(readback) > maxSRTBytes {
+		return Installed{}, errors.New("installed subtitle readback failed")
 	}
 	actual := sha256.Sum256(readback)
 	if hex.EncodeToString(actual[:]) != digest {
