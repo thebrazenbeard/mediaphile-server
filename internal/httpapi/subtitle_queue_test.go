@@ -160,6 +160,59 @@ func TestSubtitleQueueOffsetPagesRemainDistinctAndReadOnly(t *testing.T) {
 	}
 }
 
+func TestSubtitleQueueRefreshPaginatesAvailablePartsOnly(t *testing.T) {
+	deps, token, video := subtitleDecisionFixture(t)
+	// A retired part sorts before the active part and must not consume a page.
+	retired := filepath.Join(filepath.Dir(video), "000-removed.mkv")
+	if err := deps.Catalog.UpsertMediaPart(context.Background(), catalog.MediaPart{
+		ID: "retired", SourceID: "source", Path: retired, Size: 1, Available: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	all, err := deps.Catalog.ListPartsByLibrary(context.Background(), "lib")
+	if err != nil || len(all) != 2 || all[0].Available || !all[1].Available {
+		t.Fatalf("scanner must retain unavailable history: %+v, %v", all, err)
+	}
+	available, err := deps.Catalog.ListAvailablePartsByLibrary(context.Background(), "lib")
+	if err != nil || len(available) != 1 || available[0].ID != "part" {
+		t.Fatalf("subtitle planner included retired part: %+v, %v", available, err)
+	}
+	h := NewRouter(deps)
+	r := subtitleDecisionRequest(t, h, "POST", "/api/v1/libraries/lib/subtitles/queue/refresh",
+		map[string]int{"offset": 0, "limit": 1}, token)
+	if r.Code != 200 {
+		t.Fatalf("refresh %d: %s", r.Code, r.Body.String())
+	}
+	var page planReply
+	if err := json.Unmarshal(r.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || page.Planned != 1 || len(page.Items) != 1 || page.Items[0].PartID != "part" {
+		t.Fatalf("unavailable part consumed first page: %+v", page)
+	}
+	r = subtitleDecisionRequest(t, h, "POST", "/api/v1/libraries/lib/subtitles/queue/refresh",
+		map[string]int{"offset": 1, "limit": 1}, token)
+	if r.Code != 200 {
+		t.Fatalf("end page %d: %s", r.Code, r.Body.String())
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || page.Planned != 0 || len(page.Items) != 0 {
+		t.Fatalf("end page ignored available-only total: %+v", page)
+	}
+	r = subtitleDecisionRequest(t, h, "GET", "/api/v1/libraries/lib/subtitles?offset=0&limit=1", nil, token)
+	if r.Code != 200 {
+		t.Fatalf("overview %d: %s", r.Code, r.Body.String())
+	}
+	if err := json.Unmarshal(r.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].PartID != "part" {
+		t.Fatalf("unavailable part consumed overview page: %+v", page)
+	}
+}
+
 func TestSubtitlePolicyBlocksManualCandidateInstallUntilRestored(t *testing.T) {
 	deps, token, video := subtitleDecisionFixture(t)
 	h := NewRouter(deps)
