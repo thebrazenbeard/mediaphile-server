@@ -78,12 +78,21 @@ func publishedSubtitleMode() (os.FileMode, error) {
 // returns immutable, digest-checked bytes. os.Root confines all relative reads
 // even when a directory is replaced while a request is in flight.
 func openPublishedStage(stageRoot, partID, video string, durationMS int64, stageID string) (publishedStageManifest, []byte, Audit, error) {
+	videoInfo, err := regularFile(video, 0)
+	if err != nil {
+		return publishedStageManifest{}, nil, Audit{}, errors.New("reference media unavailable")
+	}
+	return openPublishedStageWithMediaInfo(stageRoot, partID, video, durationMS, stageID, videoInfo, "")
+}
+
+// The API-facing variant passes media information captured through a pinned
+// library-root handle. No unrooted media path is opened in this function.
+func openPublishedStageWithMediaInfo(stageRoot, partID, video string, durationMS int64, stageID string, videoInfo os.FileInfo, libraryRoot string) (publishedStageManifest, []byte, Audit, error) {
 	var empty publishedStageManifest
 	if !publishedStageIDRE.MatchString(stageID) || partID == "" || !filepath.IsAbs(stageRoot) || !filepath.IsAbs(video) || durationMS <= 0 {
 		return empty, nil, Audit{}, errors.New("invalid staged subtitle reference")
 	}
-	videoInfo, err := regularFile(video, 0)
-	if err != nil {
+	if videoInfo == nil || !videoInfo.Mode().IsRegular() || videoInfo.Size() < 1 {
 		return empty, nil, Audit{}, errors.New("reference media unavailable")
 	}
 	rootInfo, err := os.Lstat(stageRoot)
@@ -101,6 +110,9 @@ func openPublishedStage(stageRoot, partID, video string, durationMS int64, stage
 	openedRootInfo, err := root.Stat(".")
 	if err != nil || !os.SameFile(rootInfo, openedRootInfo) {
 		return empty, nil, Audit{}, errors.New("private staging root changed")
+	}
+	if err := verifyLibraryStageRoot(libraryRoot, stageRoot, openedRootInfo); err != nil {
+		return empty, nil, Audit{}, errors.New("staging root changed or is not isolated from media library")
 	}
 	folder := "published-subtitle-" + stageID
 	directoryInfo, err := root.Lstat(folder)
@@ -184,23 +196,33 @@ func ReviewPublishedStage(stageRoot, partID, video string, durationMS int64, sta
 		ReadyForReview: true, Published: false}, nil
 }
 
+// ReviewPublishedStageInLibrary rejects an outside-library or stale media
+// reference before disclosing even bounded staged subtitle text.
+func ReviewPublishedStageInLibrary(libraryRoot, stageRoot, partID, video string, size, modTimeNS, durationMS int64, stageID string) (PublishedReview, error) {
+	if err := stageOutsideDirectory(libraryRoot, stageRoot); err != nil {
+		return PublishedReview{}, errors.New("staging root is not outside the media library")
+	}
+	mediaRoot, err := openLibraryMediaRoot(libraryRoot, video, size, modTimeNS)
+	if err != nil {
+		return PublishedReview{}, err
+	}
+	defer mediaRoot.Close()
+	mediaInfo, err := mediaRoot.Lstat(filepath.Base(video))
+	if err != nil {
+		return PublishedReview{}, err
+	}
+	manifest, payload, audit, err := openPublishedStageWithMediaInfo(stageRoot, partID, video, durationMS, stageID, mediaInfo, libraryRoot)
+	if err != nil {
+		return PublishedReview{}, err
+	}
+	return PublishedReview{PartID: partID, StageID: stageID, Provider: manifest.Provider,
+		FileID: manifest.FileID, SHA256: manifest.SHA256, Audit: audit, Text: string(payload),
+		ReadyForReview: true, Published: false}, nil
+}
+
 // InstallPublishedStage is invoked exclusively by the explicit admin-confirmed
 // endpoint. It never changes the media file or overwrites an existing sidecar.
 func InstallPublishedStage(stageRoot, partID, video string, durationMS int64, stageID, expectedSHA256 string) (PublishedInstall, error) {
-	if !publishedSHA256RE.MatchString(expectedSHA256) {
-		return PublishedInstall{}, errors.New("invalid expected SHA256")
-	}
-	manifest, payload, audit, err := openPublishedStage(stageRoot, partID, video, durationMS, stageID)
-	if err != nil {
-		return PublishedInstall{}, err
-	}
-	if manifest.SHA256 != expectedSHA256 || audit.Status != "ready" {
-		return PublishedInstall{}, errors.New("staged subtitle changed or has unresolved review findings")
-	}
-	publicationMode, err := publishedSubtitleMode()
-	if err != nil {
-		return PublishedInstall{}, err
-	}
 	parentInfo, err := os.Lstat(filepath.Dir(video))
 	if err != nil || !parentInfo.IsDir() || parentInfo.Mode()&os.ModeSymlink != 0 {
 		return PublishedInstall{}, errors.New("media directory is not a regular directory")
@@ -214,7 +236,43 @@ func InstallPublishedStage(stageRoot, partID, video string, durationMS int64, st
 	if err != nil || !os.SameFile(parentInfo, openedParentInfo) {
 		return PublishedInstall{}, errors.New("media directory changed")
 	}
+	return installPublishedRoot(mediaRoot, stageRoot, partID, video, durationMS, stageID, expectedSHA256, "")
+}
+
+// InstallPublishedStageInLibrary holds the library-confined media directory
+// open across stage revalidation, content fingerprinting, and atomic publish.
+func InstallPublishedStageInLibrary(libraryRoot, stageRoot, partID, video string, size, modTimeNS, durationMS int64, stageID, expectedSHA256 string) (PublishedInstall, error) {
+	if err := stageOutsideDirectory(libraryRoot, stageRoot); err != nil {
+		return PublishedInstall{}, errors.New("staging root is not outside the media library")
+	}
+	mediaRoot, err := openLibraryMediaRoot(libraryRoot, video, size, modTimeNS)
+	if err != nil {
+		return PublishedInstall{}, err
+	}
+	defer mediaRoot.Close()
+	return installPublishedRoot(mediaRoot, stageRoot, partID, video, durationMS, stageID, expectedSHA256, libraryRoot)
+}
+
+func installPublishedRoot(mediaRoot *os.Root, stageRoot, partID, video string, durationMS int64, stageID, expectedSHA256, libraryRoot string) (PublishedInstall, error) {
+	if !publishedSHA256RE.MatchString(expectedSHA256) {
+		return PublishedInstall{}, errors.New("invalid expected SHA256")
+	}
 	videoName := filepath.Base(video)
+	mediaInfo, err := mediaRoot.Lstat(videoName)
+	if err != nil || !mediaInfo.Mode().IsRegular() {
+		return PublishedInstall{}, errors.New("reference media unavailable")
+	}
+	manifest, payload, audit, err := openPublishedStageWithMediaInfo(stageRoot, partID, video, durationMS, stageID, mediaInfo, libraryRoot)
+	if err != nil {
+		return PublishedInstall{}, err
+	}
+	if manifest.SHA256 != expectedSHA256 || audit.Status != "ready" {
+		return PublishedInstall{}, errors.New("staged subtitle changed or has unresolved review findings")
+	}
+	publicationMode, err := publishedSubtitleMode()
+	if err != nil {
+		return PublishedInstall{}, err
+	}
 	videoInfo, err := mediaRoot.Lstat(videoName)
 	if err != nil || !videoInfo.Mode().IsRegular() || videoInfo.Size() != manifest.VideoSize ||
 		videoInfo.ModTime().UnixNano() != manifest.VideoModTimeNano {
