@@ -21,6 +21,10 @@ func subtitleDecisionFixture(t *testing.T) (Dependencies, string, string) {
 	if err := os.WriteFile(media, []byte("movie"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	mediaInfo, err := os.Stat(media)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	if err := deps.Catalog.CreateLibrary(ctx, catalog.Library{ID: "lib", Name: "Movies", MediaType: catalog.LibraryMovies, RootPath: filepath.Dir(media), Enabled: true}); err != nil {
 		t.Fatal(err)
@@ -31,7 +35,8 @@ func subtitleDecisionFixture(t *testing.T) (Dependencies, string, string) {
 	if err := deps.Catalog.UpsertMediaSource(ctx, catalog.MediaSource{ID: "source", ItemID: "movie", Container: "mkv", DurationMS: 6000, Available: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := deps.Catalog.UpsertMediaPart(ctx, catalog.MediaPart{ID: "part", SourceID: "source", Path: media, Size: 5, Available: true}); err != nil {
+	if err := deps.Catalog.UpsertMediaPart(ctx, catalog.MediaPart{ID: "part", SourceID: "source", Path: media,
+		Size: mediaInfo.Size(), ModTimeNS: mediaInfo.ModTime().UnixNano(), Available: true}); err != nil {
 		t.Fatal(err)
 	}
 	api := NewRouter(deps)
