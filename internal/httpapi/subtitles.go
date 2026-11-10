@@ -46,7 +46,15 @@ func collectSubtitlePart(deps Dependencies, r *http.Request, partID string, insp
 			break
 		}
 	}
-	review, err := subtitles.Discover(part.Path, source.DurationMS, hasEnglish)
+	item, err := deps.Catalog.GetItem(r.Context(), source.ItemID)
+	if err != nil {
+		return subtitlePartReview{}, err
+	}
+	library, err := deps.Catalog.GetLibrary(r.Context(), item.LibraryID)
+	if err != nil {
+		return subtitlePartReview{}, err
+	}
+	review, err := subtitles.DiscoverInLibrary(library.RootPath, part.Path, part.Size, part.ModTimeNS, source.DurationMS, hasEnglish)
 	if err != nil {
 		return subtitlePartReview{}, err
 	}
@@ -54,16 +62,16 @@ func collectSubtitlePart(deps Dependencies, r *http.Request, partID string, insp
 	if err != nil {
 		return subtitlePartReview{}, err
 	}
-	item := subtitlePartReview{PartID: partID, FileName: filepath.Base(part.Path), Review: review, Embedded: []subtitles.EmbeddedAudit{}, Decision: decision}
-	item.NextAction = subtitleNextAction(review, decision)
+	partReview := subtitlePartReview{PartID: partID, FileName: filepath.Base(part.Path), Review: review, Embedded: []subtitles.EmbeddedAudit{}, Decision: decision}
+	partReview.NextAction = subtitleNextAction(review, decision)
 	if inspect {
 		ffmpeg := ""
 		if deps.FFmpegAvailable {
 			ffmpeg = deps.FFmpegBinary
 		}
-		item.Embedded = subtitles.InspectEmbedded(r.Context(), ffmpeg, part.Path, embedded, source.DurationMS)
+		partReview.Embedded = subtitles.InspectEmbeddedInLibrary(r.Context(), ffmpeg, library.RootPath, part.Path, part.Size, part.ModTimeNS, embedded, source.DurationMS)
 	}
-	return item, nil
+	return partReview, nil
 }
 func reviewSubtitlePart(deps Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +177,17 @@ func installSubtitleCandidate(deps Dependencies) http.HandlerFunc {
 			writeError(w, 409, "SUBTITLE_DECISION_HOLD", "video is skipped or held for review; restore active before installing")
 			return
 		}
-		installed, err := subtitles.Install(part.Path, source.DurationMS, request.CandidateID)
+		item, err := deps.Catalog.GetItem(r.Context(), source.ItemID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle media item unavailable")
+			return
+		}
+		library, err := deps.Catalog.GetLibrary(r.Context(), item.LibraryID)
+		if err != nil {
+			writeError(w, 500, "CATALOG_ERROR", "subtitle library unavailable")
+			return
+		}
+		installed, err := subtitles.InstallInLibrary(library.RootPath, part.Path, part.Size, part.ModTimeNS, source.DurationMS, request.CandidateID)
 		if err != nil {
 			writeError(w, 409, "SUBTITLE_INSTALL_BLOCKED", err.Error())
 			return
