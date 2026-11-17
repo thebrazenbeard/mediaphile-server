@@ -94,7 +94,14 @@ func regularFile(path string, maxSize int64) (os.FileInfo, error) {
 }
 
 func stageOutsideMedia(video, root string) error {
-	parent, err := filepath.EvalSymlinks(filepath.Dir(video))
+	return stageOutsideDirectory(filepath.Dir(video), root)
+}
+
+// stageOutsideDirectory also guards the full catalog library root on
+// API-facing routes. Checking only a video's immediate parent would allow
+// staging in a sibling directory that the media library indexes.
+func stageOutsideDirectory(mediaDir, root string) error {
+	parent, err := filepath.EvalSymlinks(mediaDir)
 	if err != nil {
 		return err
 	}
@@ -115,6 +122,25 @@ func stageOutsideMedia(video, root string) error {
 	}
 	if contained(mediaToStage) || contained(stageToMedia) {
 		return errors.New("staging must be outside media directory")
+	}
+	return nil
+}
+
+// Revalidate an already-opened staging root against the configured library
+// immediately before a sensitive operation. An ancestor replacement after
+// the first pathname check must not silently select a different directory.
+// This is not a substitute for a trusted, non-relocatable staging volume.
+func verifyLibraryStageRoot(libraryRoot, stageRoot string, opened os.FileInfo) error {
+	if libraryRoot == "" {
+		return nil // local non-catalog staging API has no library-root context
+	}
+	if err := stageOutsideDirectory(libraryRoot, stageRoot); err != nil {
+		return err
+	}
+	current, err := os.Lstat(stageRoot)
+	if err != nil || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 ||
+		opened == nil || !os.SameFile(current, opened) {
+		return errors.New("staging root changed")
 	}
 	return nil
 }
