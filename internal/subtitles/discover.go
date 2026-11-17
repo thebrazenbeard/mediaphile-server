@@ -74,12 +74,7 @@ func readRegularSRT(root *os.Root, name string) ([]byte, error) {
 	return data, nil
 }
 
-func openSubtitleInbox(mediaDir, name string) (*os.Root, error) {
-	mediaRoot, err := os.OpenRoot(mediaDir)
-	if err != nil {
-		return nil, err
-	}
-	defer mediaRoot.Close()
+func openSubtitleInbox(mediaRoot *os.Root, name string) (*os.Root, error) {
 	before, err := mediaRoot.Lstat(name)
 	if err != nil || !before.IsDir() || before.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("subtitle inbox must be a real directory inside the media folder")
@@ -96,10 +91,76 @@ func openSubtitleInbox(mediaDir, name string) (*os.Root, error) {
 	return inbox, nil
 }
 
+// openLibraryMediaRoot binds subsequent subtitle access to the configured
+// library root, not to a potentially stale absolute path in the catalog.
+// os.Root rejects symlink traversal that would escape that root, even if a
+// season directory was replaced after the original media scan.
+func openLibraryMediaRoot(libraryRoot, video string, expectedSize, expectedModTimeNS int64) (*os.Root, error) {
+	rootPath, err := filepath.Abs(libraryRoot)
+	if err != nil {
+		return nil, err
+	}
+	videoPath, err := filepath.Abs(video)
+	if err != nil {
+		return nil, err
+	}
+	rel, err := filepath.Rel(rootPath, videoPath)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return nil, errors.New("video path is outside configured library")
+	}
+	library, err := os.OpenRoot(rootPath)
+	if err != nil {
+		return nil, err
+	}
+	defer library.Close()
+	mediaRoot, err := library.OpenRoot(filepath.Dir(rel))
+	if err != nil {
+		return nil, errors.New("media directory cannot be opened within library root")
+	}
+	videoName := filepath.Base(rel)
+	info, err := mediaRoot.Lstat(videoName)
+	if err != nil || !info.Mode().IsRegular() || info.Size() != expectedSize || info.ModTime().UnixNano() != expectedModTimeNS {
+		mediaRoot.Close()
+		return nil, errors.New("cataloged media file changed")
+	}
+	opened, err := mediaRoot.Open(videoName)
+	if err != nil {
+		mediaRoot.Close()
+		return nil, err
+	}
+	actual, err := opened.Stat()
+	opened.Close()
+	if err != nil || !os.SameFile(info, actual) {
+		mediaRoot.Close()
+		return nil, errors.New("cataloged media file changed during opening")
+	}
+	return mediaRoot, nil
+}
+
 // Discover searches adjacent SRT files and a strictly bounded Subtitles/Subs inbox.
 // Unlabeled and foreign-language subtitles are never considered verified English.
 func Discover(video string, durationMS int64, embeddedEnglish bool) (Review, error) {
-	info, err := os.Lstat(video)
+	mediaRoot, err := os.OpenRoot(filepath.Dir(video))
+	if err != nil {
+		return Review{}, err
+	}
+	defer mediaRoot.Close()
+	return discoverRoot(mediaRoot, video, durationMS, embeddedEnglish)
+}
+
+// DiscoverInLibrary is the API-facing variant: all reads are confined to a
+// single opened library-root lineage and a cataloged media identity.
+func DiscoverInLibrary(libraryRoot, video string, size, modTimeNS, durationMS int64, embeddedEnglish bool) (Review, error) {
+	mediaRoot, err := openLibraryMediaRoot(libraryRoot, video, size, modTimeNS)
+	if err != nil {
+		return Review{}, err
+	}
+	defer mediaRoot.Close()
+	return discoverRoot(mediaRoot, video, durationMS, embeddedEnglish)
+}
+
+func discoverRoot(mediaRoot *os.Root, video string, durationMS int64, embeddedEnglish bool) (Review, error) {
+	info, err := mediaRoot.Lstat(filepath.Base(video))
 	if err != nil {
 		return Review{}, err
 	}
@@ -118,12 +179,12 @@ func Discover(video string, durationMS int64, embeddedEnglish bool) (Review, err
 		if folder != dir {
 			name = filepath.Base(folder)
 		}
-		if _, err := os.Lstat(folder); os.IsNotExist(err) {
+		if _, err := mediaRoot.Lstat(name); os.IsNotExist(err) {
 			continue
 		} else if err != nil {
 			return Review{}, err
 		}
-		inbox, err := openSubtitleInbox(dir, name)
+		inbox, err := openSubtitleInbox(mediaRoot, name)
 		if err != nil {
 			return Review{}, err
 		}
@@ -206,10 +267,30 @@ func Discover(video string, durationMS int64, embeddedEnglish bool) (Review, err
 // Install copies a reviewed local candidate to a new English sidecar. No originals,
 // installed subtitles, or videos are ever overwritten.
 func Install(video string, durationMS int64, candidateID string) (Installed, error) {
+	mediaRoot, err := os.OpenRoot(filepath.Dir(video))
+	if err != nil {
+		return Installed{}, err
+	}
+	defer mediaRoot.Close()
+	return installRoot(mediaRoot, video, durationMS, candidateID)
+}
+
+// InstallInLibrary rejects stale/out-of-root media ancestry and preserves its
+// pinned directory handle through candidate discovery, reads and publication.
+func InstallInLibrary(libraryRoot, video string, size, modTimeNS, durationMS int64, candidateID string) (Installed, error) {
+	mediaRoot, err := openLibraryMediaRoot(libraryRoot, video, size, modTimeNS)
+	if err != nil {
+		return Installed{}, err
+	}
+	defer mediaRoot.Close()
+	return installRoot(mediaRoot, video, durationMS, candidateID)
+}
+
+func installRoot(mediaRoot *os.Root, video string, durationMS int64, candidateID string) (Installed, error) {
 	if len(candidateID) != 32 {
 		return Installed{}, errors.New("invalid candidate identifier")
 	}
-	review, err := Discover(video, durationMS, false)
+	review, err := discoverRoot(mediaRoot, video, durationMS, false)
 	if err != nil {
 		return Installed{}, err
 	}
@@ -243,7 +324,7 @@ func Install(video string, durationMS int64, candidateID string) (Installed, err
 	if source == "" {
 		return Installed{}, errors.New("candidate path rejected")
 	}
-	inbox, err := openSubtitleInbox(filepath.Dir(video), filepath.Base(filepath.Dir(source)))
+	inbox, err := openSubtitleInbox(mediaRoot, filepath.Base(filepath.Dir(source)))
 	if err != nil {
 		return Installed{}, err
 	}
@@ -258,11 +339,6 @@ func Install(video string, durationMS int64, candidateID string) (Installed, err
 		return Installed{}, errors.New("candidate changed before installation")
 	}
 	destination := strings.TrimSuffix(video, filepath.Ext(video)) + ".en.srt"
-	mediaRoot, err := os.OpenRoot(filepath.Dir(video))
-	if err != nil {
-		return Installed{}, err
-	}
-	defer mediaRoot.Close()
 	out, err := mediaRoot.OpenFile(filepath.Base(destination), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return Installed{}, err
