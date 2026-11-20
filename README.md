@@ -80,3 +80,9 @@ The companion client includes `npm run e2e:real` for an **isolated synthetic-med
 ## Deliberate boundaries
 
 This is a **LAN-only** V1 runtime, not an Internet-facing streaming product. Native TV hardware decoders, Roku/tvOS packaging, production NAS paths, long-running transcoding, and deployment behavior require separate qualification. The private corpus and its provenance rules remain the source of truth for governed knowledge; that does not imply automatic writes or merges to it.
+
+## Editor startup containment — tracked source (2026-11-20)
+
+The tracked `main` source formerly contained a concealed VS Code `folderOpen` task invoking obfuscated `.vscode/ini` through Node. The task list is now empty, `task.allowAutomaticTasks` is explicitly `"off"`, and the obfuscated file is removed from this source tree. Historical Git source remains for investigation.
+
+**Limits:** This is source-only containment, not proof that older checkouts, editor extensions, user/global settings, local credentials, or any previous host execution are safe. Do not execute historical suspect assets.
