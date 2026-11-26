@@ -131,6 +131,75 @@ func TestDiscoverRefusesSymlinkedSubtitleInbox(t *testing.T) {
 	}
 }
 
+func TestLibraryRootContainsSubtitleAccessAfterSeasonReplacement(t *testing.T) {
+	root := t.TempDir()
+	season := filepath.Join(root, "Travelers", "Season 01")
+	if err := os.MkdirAll(filepath.Join(season, "Subtitles"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	video := filepath.Join(season, "Travelers - S01E01.mkv")
+	if err := os.WriteFile(video, []byte("original media"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	name := "Travelers - S01E01.en.srt"
+	if err := os.WriteFile(filepath.Join(season, "Subtitles", name), []byte(cleanSRT), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() (Review, error) {
+		return DiscoverInLibrary(root, video, info.Size(), info.ModTime().UnixNano(), 10000, false)
+	}
+	review, err := read()
+	if err != nil || len(review.Candidates) != 1 {
+		t.Fatalf("valid in-library subtitle not discovered: %v %#v", err, review)
+	}
+	identifier := review.Candidates[0].ID
+	installed, err := InstallInLibrary(root, video, info.Size(), info.ModTime().UnixNano(), 10000, identifier)
+	if err != nil {
+		t.Fatalf("valid in-library subtitle install failed: %v", err)
+	}
+	content, err := os.ReadFile(installed.Destination)
+	if err != nil || string(content) != cleanSRT {
+		t.Fatalf("valid in-library install content: %v %q", err, content)
+	}
+
+	// Simulate a writable media-share actor replacing an already-scanned
+	// season directory with a symlink to a location outside the library.
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, filepath.Base(video)), []byte("original media"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Give the replacement the cataloged size and timestamp, so rejection
+	// must come from root containment rather than a trivial metadata mismatch.
+	if err := os.Chtimes(filepath.Join(outside, filepath.Base(video)), info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(outside, "Subtitles"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "Subtitles", name), []byte(cleanSRT), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(season, season+".original"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, season); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := read(); err == nil {
+		t.Fatal("read through replacement season symlink outside library")
+	}
+	if _, err := InstallInLibrary(root, video, info.Size(), info.ModTime().UnixNano(), 10000, identifier); err == nil {
+		t.Fatal("installed through replacement season symlink outside library")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "Travelers - S01E01.en.srt")); !os.IsNotExist(err) {
+		t.Fatalf("outside-library sidecar was created or not inspectable: %v", err)
+	}
+}
+
 func TestAuditFindsLowercaseLPronouns(t *testing.T) {
 	payload := []byte(strings.ReplaceAll(cleanSRT, "I love you.", "l'm ready. lt is time."))
 	audit, err := AuditSRT(payload, 10000)
