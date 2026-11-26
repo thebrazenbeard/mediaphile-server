@@ -78,6 +78,177 @@ func TestStageOpenSubtitlesExplicitTwoStepAndNoMediaWrite(t *testing.T) {
 	}
 }
 
+func TestStageOpenSubtitlesInLibraryRejectsSwappedAncestorBeforeProvider(t *testing.T) {
+	base := t.TempDir()
+	library := filepath.Join(base, "library")
+	season := filepath.Join(library, "Travelers", "Season 01")
+	outside := filepath.Join(base, "outside")
+	stage := filepath.Join(base, "private-stage")
+	for _, dir := range []string{season, outside, stage} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	video := filepath.Join(season, "Travelers - S01E01 - Travelers.mkv")
+	media := []byte("same-size-unchanged-looking-media")
+	if err := os.WriteFile(video, media, 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	client := &http.Client{Transport: subtitleRoundTripper(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls%2 == 1 {
+			return publishedResponse(200, `{"link":"https://www.opensubtitles.com/download/signed/example.srt"}`), nil
+		}
+		return publishedResponse(200, validPublishedSRT), nil
+	})}
+	stageOne, err := StageOpenSubtitlesInLibrary(context.Background(), client, "key", "token", 123,
+		"part-1", library, video, stage, info.Size(), info.ModTime().UnixNano(), 6000)
+	if err != nil || calls != 2 || !stageOne.ReadyForReview {
+		t.Fatalf("in-root media unexpectedly blocked: %+v %v providerCalls=%d", stageOne, err, calls)
+	}
+	if err := os.Rename(season, filepath.Join(base, "saved-season")); err != nil {
+		t.Fatal(err)
+	}
+	outsideVideo := filepath.Join(outside, filepath.Base(video))
+	if err := os.WriteFile(outsideVideo, media, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(outsideVideo, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, season); err != nil {
+		t.Skipf("cannot create ancestor symlink: %v", err)
+	}
+	_, err = StageOpenSubtitlesInLibrary(context.Background(), client, "key", "token", 123,
+		"part-1", library, video, stage, info.Size(), info.ModTime().UnixNano(), 6000)
+	if err == nil || calls != 2 {
+		t.Fatalf("outside-library ancestor accepted before provider: err=%v providerCalls=%d", err, calls)
+	}
+}
+
+func TestStageOpenSubtitlesInLibraryRejectsSiblingStageInsideLibraryBeforeProvider(t *testing.T) {
+	base := t.TempDir()
+	library := filepath.Join(base, "library")
+	season := filepath.Join(library, "Travelers", "Season 01")
+	stage := filepath.Join(library, "private-staging")
+	for _, dir := range []string{season, stage} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	video := filepath.Join(season, "Travelers - S01E01.mkv")
+	if err := os.WriteFile(video, []byte("synthetic-media"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	client := &http.Client{Transport: subtitleRoundTripper(func(*http.Request) (*http.Response, error) {
+		calls++
+		return publishedResponse(200, validPublishedSRT), nil
+	})}
+	_, err = StageOpenSubtitlesInLibrary(context.Background(), client, "key", "token", 123,
+		"part-1", library, video, stage, info.Size(), info.ModTime().UnixNano(), 6000)
+	if err == nil || calls != 0 {
+		t.Fatalf("inside-library sibling stage accepted or contacted provider: err=%v calls=%d", err, calls)
+	}
+	entries, err := os.ReadDir(stage)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("rejected stage created artifacts: %v %v", entries, err)
+	}
+}
+
+func TestStageOpenSubtitlesInLibraryRejectsStageRootMovedDuringProviderCall(t *testing.T) {
+	base := t.TempDir()
+	library := filepath.Join(base, "library")
+	season := filepath.Join(library, "Travelers", "Season 01")
+	outside := filepath.Join(base, "outside")
+	inside := filepath.Join(library, "private-stage")
+	for _, dir := range []string{season, filepath.Join(outside, "stage"), filepath.Join(inside, "stage")} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	video := filepath.Join(season, "Travelers - S01E01.mkv")
+	if err := os.WriteFile(video, []byte("synthetic-media"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(base, "stage-alias")
+	if err := os.Symlink(outside, alias); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+	calls := 0
+	client := &http.Client{Transport: subtitleRoundTripper(func(*http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			if err := os.Remove(alias); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(inside, alias); err != nil {
+				t.Fatal(err)
+			}
+			return publishedResponse(200, `{"link":"https://www.opensubtitles.com/download/signed/example.srt"}`), nil
+		}
+		return publishedResponse(200, validPublishedSRT), nil
+	})}
+	_, err = StageOpenSubtitlesInLibrary(context.Background(), client, "key", "token", 123,
+		"part-1", library, video, filepath.Join(alias, "stage"), info.Size(), info.ModTime().UnixNano(), 6000)
+	if err == nil || calls != 2 {
+		t.Fatalf("relocated staging accepted: err=%v calls=%d", err, calls)
+	}
+	for _, stage := range []string{filepath.Join(outside, "stage"), filepath.Join(inside, "stage")} {
+		entries, err := os.ReadDir(stage)
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("relocated staging left artifacts at %s: %v %v", stage, entries, err)
+		}
+	}
+}
+
+func TestStageOpenSubtitlesInLibraryRejectsEqualMetadataReplacement(t *testing.T) {
+	video, stage := publishedStageFixture(t)
+	info, err := os.Stat(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	client := &http.Client{Transport: subtitleRoundTripper(func(*http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			if err := os.Rename(video, video+".original"); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(video, []byte("unaltered-video"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(video, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			return publishedResponse(200, `{"link":"https://www.opensubtitles.com/download/signed/example.srt"}`), nil
+		}
+		return publishedResponse(200, validPublishedSRT), nil
+	})}
+	_, err = StageOpenSubtitlesInLibrary(context.Background(), client, "key", "token", 123,
+		"part-1", filepath.Dir(video), video, stage, info.Size(), info.ModTime().UnixNano(), 6000)
+	if err == nil || calls != 2 {
+		t.Fatalf("replaced media accepted: err=%v providerCalls=%d", err, calls)
+	}
+	entries, err := os.ReadDir(stage)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("replaced media left staged output: %v %v", entries, err)
+	}
+}
+
 func TestStageOpenSubtitlesRejectsUntrustedLinksBeforeGET(t *testing.T) {
 	for _, link := range []string{
 		"http://www.opensubtitles.com/download/unsafe",
